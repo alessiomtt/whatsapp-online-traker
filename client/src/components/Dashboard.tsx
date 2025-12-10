@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { Eye, EyeOff, Disc, Archive, ArrowLeft, RotateCcw, Trash2, History } from 'lucide-react';
+import { Eye, EyeOff, Disc, Archive, ArrowLeft, RotateCcw, Trash2, History, FileSpreadsheet, FileText } from 'lucide-react';
 import { socket } from '../App';
 import { ContactCard } from './ContactCard';
 import { CountrySelector } from './CountrySelector';
+import { exportToExcel, exportToPDF } from '../utils/exportUtils';
 import clsx from 'clsx';
 
 interface TrackerData {
@@ -446,7 +447,12 @@ export function Dashboard() {
                                 {expandedArchiveLogs.has(contact.jid) && (
                                     <div className="p-4 border-t border-gray-100 bg-white">
                                         {archiveLogs.has(contact.jid) ? (
-                                            <LogView data={archiveLogs.get(contact.jid) || []} />
+                                            <LogView
+                                                data={archiveLogs.get(contact.jid) || []}
+                                                contactName={contact.displayNumber !== contact.jid.split('@')[0] ? contact.displayNumber : undefined}
+                                                contactNumber={contact.jid.split('@')[0]}
+                                                jid={contact.jid}
+                                            />
                                         ) : (
                                             <div className="text-center py-4 text-gray-500">
                                                 <div className="animate-spin w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full mx-auto mb-2"></div>
@@ -593,7 +599,12 @@ export function Dashboard() {
 }
 
 // Simple Log View component for archived contacts
-function LogView({ data }: { data: TrackerData[] }) {
+function LogView({ data, contactName, contactNumber, jid }: {
+    data: TrackerData[];
+    contactName?: string;
+    contactNumber?: string;
+    jid?: string;
+}) {
     if (data.length === 0) {
         return (
             <div className="text-center text-gray-500 py-8">
@@ -659,21 +670,61 @@ function LogView({ data }: { data: TrackerData[] }) {
         }
     };
 
+    // Prepare events for export (reversed to show oldest first)
+    const exportEvents = events.slice().reverse().map(e => ({
+        type: e.type as 'start' | 'stop' | 'restart' | 'calibration' | 'calibration_end' | 'online' | 'offline' | 'standby',
+        timestamp: e.timestamp,
+        message: e.message
+    }));
+
     return (
-        <div className="max-h-60 overflow-y-auto space-y-1">
-            {events.slice().reverse().map((event, idx) => (
-                <div key={idx} className={clsx("px-3 py-2 border-l-4 rounded-r text-sm", getEventStyle(event.type))}>
-                    <span className="font-medium">{event.message}</span>
-                    <span className="text-xs ml-2 opacity-70">
-                        {new Date(event.timestamp).toLocaleDateString('it-IT', {
-                            day: '2-digit',
-                            month: 'short',
-                            hour: '2-digit',
-                            minute: '2-digit'
+        <div>
+            {/* Export buttons */}
+            {contactNumber && events.length > 0 && (
+                <div className="flex justify-end gap-2 mb-3">
+                    <button
+                        onClick={() => exportToExcel({
+                            contactName,
+                            contactNumber,
+                            jid,
+                            events: exportEvents
                         })}
-                    </span>
+                        className="flex items-center gap-1 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors"
+                        title="Esporta in Excel"
+                    >
+                        <FileSpreadsheet size={14} />
+                        Excel
+                    </button>
+                    <button
+                        onClick={() => exportToPDF({
+                            contactName,
+                            contactNumber,
+                            jid,
+                            events: exportEvents
+                        })}
+                        className="flex items-center gap-1 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors"
+                        title="Esporta in PDF"
+                    >
+                        <FileText size={14} />
+                        PDF
+                    </button>
                 </div>
-            ))}
+            )}
+            <div className="max-h-60 overflow-y-auto space-y-1">
+                {events.slice().reverse().map((event, idx) => (
+                    <div key={idx} className={clsx("px-3 py-2 border-l-4 rounded-r text-sm", getEventStyle(event.type))}>
+                        <span className="font-medium">{event.message}</span>
+                        <span className="text-xs ml-2 opacity-70">
+                            {new Date(event.timestamp).toLocaleDateString('it-IT', {
+                                day: '2-digit',
+                                month: 'short',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                            })}
+                        </span>
+                    </div>
+                ))}
+            </div>
         </div>
     );
 }

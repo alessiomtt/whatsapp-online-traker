@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { Square, Activity, Wifi, Smartphone, Monitor, ChevronDown, ChevronUp, Edit2, Zap, Check, X, History, ArrowLeft, Play, AlertCircle, Archive, RotateCcw, CheckCircle } from 'lucide-react';
+import { Square, Activity, Wifi, Smartphone, Monitor, ChevronDown, ChevronUp, Edit2, Zap, Check, X, History, ArrowLeft, Play, AlertCircle, Archive, RotateCcw, CheckCircle, FileSpreadsheet, FileText } from 'lucide-react';
 import clsx from 'clsx';
+import { exportToExcel, exportToPDF } from '../utils/exportUtils';
 
 interface TrackerData {
     rtt: number;
@@ -492,12 +493,44 @@ export function ContactCard({
                                     <History size={20} className="text-blue-600" />
                                     Storico Attività
                                 </h4>
-                                <button
-                                    onClick={() => setShowLog(false)}
-                                    className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
-                                >
-                                    <ArrowLeft size={14} /> Monitoraggio
-                                </button>
+                                <div className="flex items-center gap-2">
+                                    {activityLog.length > 0 && (
+                                        <>
+                                            <button
+                                                onClick={() => exportToExcel({
+                                                    contactName: displayNumber !== jid.split('@')[0] ? displayNumber : undefined,
+                                                    contactNumber: jid.split('@')[0],
+                                                    jid: jid,
+                                                    events: activityLog
+                                                })}
+                                                className="flex items-center gap-1 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors"
+                                                title="Esporta in Excel"
+                                            >
+                                                <FileSpreadsheet size={14} />
+                                                Excel
+                                            </button>
+                                            <button
+                                                onClick={() => exportToPDF({
+                                                    contactName: displayNumber !== jid.split('@')[0] ? displayNumber : undefined,
+                                                    contactNumber: jid.split('@')[0],
+                                                    jid: jid,
+                                                    events: activityLog
+                                                })}
+                                                className="flex items-center gap-1 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors"
+                                                title="Esporta in PDF"
+                                            >
+                                                <FileText size={14} />
+                                                PDF
+                                            </button>
+                                        </>
+                                    )}
+                                    <button
+                                        onClick={() => setShowLog(false)}
+                                        className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
+                                    >
+                                        <ArrowLeft size={14} /> Monitoraggio
+                                    </button>
+                                </div>
                             </div>
 
                             <div className="bg-white rounded-xl border border-gray-200 overflow-hidden max-h-[400px] overflow-y-auto">
