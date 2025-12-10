@@ -161,6 +161,10 @@ export function Dashboard() {
         socket.emit('remove-contact', jid);
     };
 
+    const handleRename = (jid: string, newName: string) => {
+        socket.emit('update-name', { jid, name: newName });
+    };
+
     return (
         <div className="space-y-6">
             {/* Add Contact Form */}
@@ -230,6 +234,7 @@ export function Dashboard() {
                             profilePic={contact.profilePic}
                             onRemove={() => handleRemove(contact.jid)}
                             privacyMode={privacyMode}
+                            onRename={handleRename}
                         />
                     ))}
                 </div>

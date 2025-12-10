@@ -148,6 +148,11 @@ io.on('connection', (socket) => {
             socket.emit('contact-removed', jid);
         }
     });
+
+    socket.on('update-name', (data: { jid: string, name: string }) => {
+        console.log(`Request to rename ${data.jid} to ${data.name}`);
+        io.emit('contact-name', data);
+    });
 });
 
 const PORT = 3001;

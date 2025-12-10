@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { Square, Activity, Wifi, Smartphone, Monitor } from 'lucide-react';
+import { Square, Activity, Wifi, Smartphone, Monitor, ChevronDown, ChevronUp, Edit2, Zap, Check, X } from 'lucide-react';
 import clsx from 'clsx';
 
 interface TrackerData {
@@ -29,6 +29,7 @@ interface ContactCardProps {
     profilePic: string | null;
     onRemove: () => void;
     privacyMode?: boolean;
+    onRename?: (jid: string, newName: string) => void;
 }
 
 export function ContactCard({
@@ -40,7 +41,8 @@ export function ContactCard({
     presence,
     profilePic,
     onRemove,
-    privacyMode = false
+    privacyMode = false,
+    onRename
 }: ContactCardProps) {
     const lastData = data[data.length - 1];
     const currentStatus = devices.length > 0
@@ -49,137 +51,315 @@ export function ContactCard({
             devices[0].state)
         : 'Unknown';
 
+    const [isCollapsed, setIsCollapsed] = useState(false);
+    const [isEditing, setIsEditing] = useState(false);
+    const [nameInput, setNameInput] = useState(displayNumber);
+    const [showStopConfirm, setShowStopConfirm] = useState(false);
+
     // Blur phone number in privacy mode
     const blurredNumber = privacyMode ? displayNumber.replace(/\d/g, '•') : displayNumber;
+    const isCustomName = displayNumber !== jid.split('@')[0];
+
+    const handleSaveName = () => {
+        if (onRename && nameInput.trim()) {
+            onRename(jid, nameInput.trim());
+            setIsEditing(false);
+        }
+    };
+
+    const handleStopClick = () => {
+        setShowStopConfirm(true);
+    };
+
+    const confirmStop = () => {
+        onRemove();
+        setShowStopConfirm(false);
+    };
+
+    const cancelStop = () => {
+        setShowStopConfirm(false);
+    };
+
+    // Helper to determine status color
+    const getStatusColor = (status: string) => {
+        const lower = status.toLowerCase();
+        if (lower === 'offline') return "bg-red-100 text-red-700";
+        if (lower.includes('online')) return "bg-green-100 text-green-700";
+        if (lower === 'standby') return "bg-yellow-100 text-yellow-700";
+        return "bg-gray-100 text-gray-700";
+    };
+
+    const isOnline = currentStatus.toLowerCase().includes('online');
 
     return (
-        <div className="bg-gradient-to-br from-white to-gray-50 rounded-xl shadow-lg border border-gray-200 overflow-hidden">
-            {/* Header with Stop Button */}
-            <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-gray-900">{blurredNumber}</h3>
-                <button
-                    onClick={onRemove}
-                    className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center gap-2 font-medium transition-colors text-sm"
-                >
-                    <Square size={16} /> Stop
-                </button>
-            </div>
+        <div className={clsx(
+            "rounded-xl shadow-lg border overflow-hidden transition-all duration-300 relative",
+            isCollapsed && isOnline
+                ? "bg-green-50 border-green-200"
+                : "bg-gradient-to-br from-white to-gray-50 border-gray-200"
+        )}>
+            {/* Header */}
+            {!showStopConfirm || !isCollapsed ? (
+                <div className={clsx(
+                    "border-b px-4 py-3 flex items-center justify-between gap-4 transition-colors",
+                    isCollapsed && isOnline ? "bg-green-50 border-green-100" : "bg-white border-gray-200"
+                )}>
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                        <button
+                            onClick={() => setIsCollapsed(!isCollapsed)}
+                            className="p-1 hover:bg-gray-100 rounded-lg text-gray-500 transition-colors"
+                        >
+                            {isCollapsed ? <ChevronDown size={20} /> : <ChevronUp size={20} />}
+                        </button>
 
-            <div className="p-6">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    {/* Status Card */}
-                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 flex flex-col items-center text-center">
-                        <div className="relative mb-4">
-                            <div className="w-32 h-32 rounded-full overflow-hidden bg-gray-100 border-4 border-white shadow-md">
+                        {/* Collapsed State Info */}
+                        {isCollapsed && (
+                            <div className="w-8 h-8 rounded-full overflow-hidden bg-gray-100 border border-gray-200 flex-shrink-0">
                                 {profilePic ? (
                                     <img
                                         src={profilePic}
                                         alt="Profile"
-                                        className={clsx(
-                                            "w-full h-full object-cover transition-all duration-200",
-                                            privacyMode && "blur-xl scale-110"
-                                        )}
-                                        style={privacyMode ? {
-                                            filter: 'blur(16px) contrast(0.8)',
-                                        } : {}}
+                                        className={clsx("w-full h-full object-cover", privacyMode && "blur-sm")}
                                     />
                                 ) : (
-                                    <div className="w-full h-full flex items-center justify-center text-gray-400">
-                                        No Image
-                                    </div>
+                                    <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs">?</div>
                                 )}
                             </div>
-                            <div className={clsx(
-                                "absolute bottom-2 right-2 w-6 h-6 rounded-full border-2 border-white",
-                                currentStatus === 'OFFLINE' ? "bg-red-500" :
-                                    currentStatus.includes('Online') ? "bg-green-500" : "bg-gray-400"
-                            )} />
-                        </div>
-
-                        <h4 className="text-xl font-bold text-gray-900 mb-1">{blurredNumber}</h4>
-
-                        <div className="flex items-center gap-2 mb-4">
-                            <span className={clsx(
-                                "px-3 py-1 rounded-full text-sm font-medium",
-                                currentStatus === 'OFFLINE' ? "bg-red-100 text-red-700" :
-                                    currentStatus.includes('Online') ? "bg-green-100 text-green-700" :
-                                        currentStatus === 'Standby' ? "bg-yellow-100 text-yellow-700" : "bg-gray-100 text-gray-700"
-                            )}>
-                                {currentStatus}
-                            </span>
-                        </div>
-
-                        <div className="w-full pt-4 border-t border-gray-100 space-y-2">
-                            <div className="flex justify-between items-center text-sm text-gray-600">
-                                <span className="flex items-center gap-1"><Wifi size={16} /> Official Status</span>
-                                <span className="font-medium">{presence || 'Unknown'}</span>
-                            </div>
-                            <div className="flex justify-between items-center text-sm text-gray-600">
-                                <span className="flex items-center gap-1"><Smartphone size={16} /> Devices</span>
-                                <span className="font-medium">{deviceCount || 0}</span>
-                            </div>
-                        </div>
-
-                        {/* Device List */}
-                        {devices.length > 0 && (
-                            <div className="w-full pt-4 border-t border-gray-100 mt-4">
-                                <h5 className="text-xs font-semibold text-gray-500 uppercase mb-2">Device States</h5>
-                                <div className="space-y-1">
-                                    {devices.map((device, idx) => (
-                                        <div key={device.jid} className="flex items-center justify-between text-sm py-1">
-                                            <div className="flex items-center gap-2">
-                                                <Monitor size={14} className="text-gray-400" />
-                                                <span className="text-gray-600">Device {idx + 1}</span>
-                                            </div>
-                                            <span className={clsx(
-                                                "px-2 py-0.5 rounded text-xs font-medium",
-                                                device.state === 'OFFLINE' ? "bg-red-100 text-red-700" :
-                                                    device.state.includes('Online') ? "bg-green-100 text-green-700" :
-                                                        device.state === 'Standby' ? "bg-yellow-100 text-yellow-700" : "bg-gray-100 text-gray-700"
-                                            )}>
-                                                {device.state}
-                                            </span>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
                         )}
+
+                        <div className="flex-1 min-w-0">
+                            {isEditing ? (
+                                <div className="flex items-center gap-2">
+                                    <input
+                                        type="text"
+                                        value={nameInput}
+                                        onChange={(e) => setNameInput(e.target.value)}
+                                        className="border border-blue-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-full"
+                                        autoFocus
+                                    />
+                                    <button onClick={handleSaveName} className="p-1 text-green-600 hover:bg-green-50 rounded"><Check size={16} /></button>
+                                    <button onClick={() => setIsEditing(false)} className="p-1 text-red-600 hover:bg-red-50 rounded"><X size={16} /></button>
+                                </div>
+                            ) : (
+                                <div className="flex items-center gap-2 group">
+                                    <div>
+                                        <h3 className="text-lg font-semibold text-gray-900 truncate flex items-center gap-2">
+                                            {blurredNumber}
+                                        </h3>
+                                        {isCustomName && (
+                                            <p className="text-xs text-gray-400 font-mono">
+                                                {privacyMode ? jid.split('@')[0].replace(/\d/g, '•') : jid.split('@')[0]}
+                                            </p>
+                                        )}
+                                    </div>
+                                    <button
+                                        onClick={() => {
+                                            setNameInput(displayNumber);
+                                            setIsEditing(true);
+                                        }}
+                                        className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 hover:bg-gray-100 rounded-full text-gray-500"
+                                    >
+                                        <Edit2 size={14} />
+                                    </button>
+                                </div>
+                            )}
+                        </div>
                     </div>
 
-                    {/* Metrics & Chart */}
-                    <div className="md:col-span-2 space-y-6">
-                        {/* Metrics Grid */}
-                        <div className="grid grid-cols-3 gap-4">
-                            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
-                                <div className="text-sm text-gray-500 mb-1 flex items-center gap-1"><Activity size={16} /> Current Avg RTT</div>
-                                <div className="text-2xl font-bold text-gray-900">{lastData?.avg.toFixed(0) || '-'} ms</div>
+                    <div className="flex items-center gap-3">
+                        {/* Collapsed Status Indicators (Rounded Full) */}
+                        {isCollapsed && (
+                            <div className="flex items-center gap-3 mr-2">
+                                <span className={clsx(
+                                    "px-3 py-1 rounded-full text-xs font-medium",
+                                    getStatusColor(currentStatus)
+                                )}>
+                                    {currentStatus}
+                                </span>
                             </div>
-                            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
-                                <div className="text-sm text-gray-500 mb-1">Median (50)</div>
-                                <div className="text-2xl font-bold text-gray-900">{lastData?.median.toFixed(0) || '-'} ms</div>
-                            </div>
-                            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
-                                <div className="text-sm text-gray-500 mb-1">Threshold</div>
-                                <div className="text-2xl font-bold text-blue-600">{lastData?.threshold.toFixed(0) || '-'} ms</div>
-                            </div>
+                        )}
+
+                        {/* Running Indicator (Rounded Mid) */}
+                        <div className="flex items-center gap-1.5 bg-green-50 px-2.5 py-1 rounded-md border border-green-100">
+                            <Zap size={12} className="text-green-600 animate-pulse fill-green-600" />
+                            <span className="text-[11px] font-bold text-green-700 animate-pulse">Running</span>
                         </div>
 
-                        {/* Chart */}
-                        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 h-[300px]">
-                            <h5 className="text-sm font-medium text-gray-500 mb-4">RTT History & Threshold</h5>
-                            <ResponsiveContainer width="100%" height="100%">
-                                <LineChart data={data}>
-                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-                                    <XAxis dataKey="timestamp" hide />
-                                    <YAxis domain={['auto', 'auto']} />
-                                    <Tooltip
-                                        labelFormatter={(t: number) => new Date(t).toLocaleTimeString()}
-                                        contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                                    />
-                                    <Line type="monotone" dataKey="avg" stroke="#3b82f6" strokeWidth={2} dot={false} name="Avg RTT" isAnimationActive={false} />
-                                    <Line type="step" dataKey="threshold" stroke="#ef4444" strokeDasharray="5 5" dot={false} name="Threshold" isAnimationActive={false} />
-                                </LineChart>
-                            </ResponsiveContainer>
+                        <button
+                            onClick={handleStopClick}
+                            className="bg-red-600 text-white hover:bg-red-700 px-4 py-2 rounded-lg flex items-center gap-2 font-medium transition-all text-sm"
+                        >
+                            <Square size={16} fill="currentColor" /> Stop
+                        </button>
+                    </div>
+                </div>
+            ) : (
+                /* Collapsed Confirmation State */
+                <div className="bg-red-50 border-b border-red-100 px-4 py-3 flex items-center justify-between gap-4 animate-in fade-in duration-200">
+                    <div className="flex items-center gap-3 text-red-800">
+                        <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center text-red-600 flex-shrink-0">
+                            <Square size={14} fill="currentColor" />
+                        </div>
+                        <span className="font-semibold text-sm">Interrompere il monitoraggio?</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <button onClick={cancelStop} className="px-3 py-1.5 bg-white border border-gray-200 rounded text-sm font-medium text-gray-600 hover:bg-gray-50">Annulla</button>
+                        <button onClick={confirmStop} className="px-3 py-1.5 bg-red-600 rounded text-sm font-medium text-white hover:bg-red-700 shadow-sm">Conferma</button>
+                    </div>
+                </div>
+            )}
+
+            {/* Confirmation Overlay for Expanded State */}
+            {showStopConfirm && !isCollapsed && (
+                <div className="absolute inset-0 bg-white/95 z-50 flex flex-col items-center justify-center p-6 animate-in fade-in zoom-in-95 duration-200">
+                    <div className="w-16 h-16 rounded-full bg-red-50 flex items-center justify-center text-red-600 mb-4 shadow-sm">
+                        <Square size={32} fill="currentColor" />
+                    </div>
+                    <h3 className="text-xl font-bold text-gray-900 mb-2">Interrompere il monitoraggio?</h3>
+                    <p className="text-gray-500 text-center mb-6 max-w-xs">
+                        Sei sicuro di voler fermare il tracciamento di <span className="font-semibold text-gray-900">{blurredNumber}</span>?
+                    </p>
+                    <div className="flex gap-3 w-full max-w-xs">
+                        <button
+                            onClick={cancelStop}
+                            className="flex-1 px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition-colors"
+                        >
+                            Annulla
+                        </button>
+                        <button
+                            onClick={confirmStop}
+                            className="flex-1 px-4 py-2.5 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 transition-colors shadow-sm"
+                        >
+                            Conferma
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* Content (Collapsible) */}
+            <div className={clsx(
+                "transition-[max-height,opacity] duration-300 ease-in-out overflow-hidden",
+                isCollapsed ? "max-h-0 opacity-0" : "max-h-[500px] opacity-100"
+            )}>
+                <div className="p-6">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        {/* Status Card */}
+                        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 flex flex-col items-center text-center">
+                            <div className="relative mb-4">
+                                <div className="w-32 h-32 rounded-full overflow-hidden bg-gray-100 border-4 border-white shadow-md">
+                                    {profilePic ? (
+                                        <img
+                                            src={profilePic}
+                                            alt="Profile"
+                                            className={clsx(
+                                                "w-full h-full object-cover transition-all duration-200",
+                                                privacyMode && "blur-xl scale-110"
+                                            )}
+                                            style={privacyMode ? {
+                                                filter: 'blur(16px) contrast(0.8)',
+                                            } : {}}
+                                        />
+                                    ) : (
+                                        <div className="w-full h-full flex items-center justify-center text-gray-400">
+                                            No Image
+                                        </div>
+                                    )}
+                                </div>
+                                <div className={clsx(
+                                    "absolute bottom-2 right-2 w-6 h-6 rounded-full border-2 border-white",
+                                    currentStatus === 'OFFLINE' ? "bg-red-500" :
+                                        currentStatus.includes('Online') ? "bg-green-500" : "bg-gray-400"
+                                )} />
+                            </div>
+
+                            <div className="flex items-center gap-2 mb-4">
+                                <span className={clsx(
+                                    "px-3 py-1 rounded-full text-sm font-medium",
+                                    getStatusColor(currentStatus)
+                                )}>
+                                    {currentStatus}
+                                </span>
+                            </div>
+
+                            <div className="mb-4">
+                                <h4 className="text-xl font-bold text-gray-900 leading-tight">{blurredNumber}</h4>
+                                {isCustomName && (
+                                    <p className="text-xs text-gray-400 font-mono mt-1">
+                                        {privacyMode ? jid.split('@')[0].replace(/\d/g, '•') : jid.split('@')[0]}
+                                    </p>
+                                )}
+                            </div>
+
+                            <div className="w-full pt-4 border-t border-gray-100 space-y-2">
+                                <div className="flex justify-between items-center text-sm text-gray-600">
+                                    <span className="flex items-center gap-1"><Wifi size={16} /> Official Status</span>
+                                    <span className="font-medium">{presence || 'Unknown'}</span>
+                                </div>
+                                <div className="flex justify-between items-center text-sm text-gray-600">
+                                    <span className="flex items-center gap-1"><Smartphone size={16} /> Devices</span>
+                                    <span className="font-medium">{deviceCount || 0}</span>
+                                </div>
+                            </div>
+
+                            {/* Device List */}
+                            {devices.length > 0 && (
+                                <div className="w-full pt-4 border-t border-gray-100 mt-4">
+                                    <h5 className="text-xs font-semibold text-gray-500 uppercase mb-2">Device States</h5>
+                                    <div className="space-y-1">
+                                        {devices.map((device, idx) => (
+                                            <div key={device.jid} className="flex items-center justify-between text-sm py-1">
+                                                <div className="flex items-center gap-2">
+                                                    <Monitor size={14} className="text-gray-400" />
+                                                    <span className="text-gray-600">Device {idx + 1}</span>
+                                                </div>
+                                                <span className={clsx(
+                                                    "px-2 py-0.5 rounded text-xs font-medium",
+                                                    getStatusColor(device.state)
+                                                )}>
+                                                    {device.state}
+                                                </span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Metrics & Chart */}
+                        <div className="md:col-span-2 space-y-6">
+                            {/* Metrics Grid */}
+                            <div className="grid grid-cols-3 gap-4">
+                                <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+                                    <div className="text-sm text-gray-500 mb-1 flex items-center gap-1"><Activity size={16} /> Current Avg RTT</div>
+                                    <div className="text-2xl font-bold text-gray-900">{lastData?.avg.toFixed(0) || '-'} ms</div>
+                                </div>
+                                <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+                                    <div className="text-sm text-gray-500 mb-1">Median (50)</div>
+                                    <div className="text-2xl font-bold text-gray-900">{lastData?.median.toFixed(0) || '-'} ms</div>
+                                </div>
+                                <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+                                    <div className="text-sm text-gray-500 mb-1">Threshold</div>
+                                    <div className="text-2xl font-bold text-blue-600">{lastData?.threshold.toFixed(0) || '-'} ms</div>
+                                </div>
+                            </div>
+
+                            {/* Chart */}
+                            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 h-[300px]">
+                                <h5 className="text-sm font-medium text-gray-500 mb-4">RTT History & Threshold</h5>
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <LineChart data={data}>
+                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                                        <XAxis dataKey="timestamp" hide />
+                                        <YAxis domain={['auto', 'auto']} />
+                                        <Tooltip
+                                            labelFormatter={(t: number) => new Date(t).toLocaleTimeString()}
+                                            contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                                        />
+                                        <Line type="monotone" dataKey="avg" stroke="#3b82f6" strokeWidth={2} dot={false} name="Avg RTT" isAnimationActive={false} />
+                                        <Line type="step" dataKey="threshold" stroke="#ef4444" strokeDasharray="5 5" dot={false} name="Threshold" isAnimationActive={false} />
+                                    </LineChart>
+                                </ResponsiveContainer>
+                            </div>
                         </div>
                     </div>
                 </div>
