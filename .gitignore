@@ -78,3 +78,10 @@ jspm_packages/
 # Misc
 .cache
 .parcel-cache
+
+# Database files
+data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm

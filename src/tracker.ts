@@ -2,6 +2,7 @@ import '@whiskeysockets/baileys';
 import { WASocket, proto } from '@whiskeysockets/baileys';
 import { config } from './config';
 import { RttAnalyzer, StateAnalysisResult } from './services/rttAnalyzer';
+import * as db from './services/database';
 
 /**
  * Logger utility for debug and normal mode
@@ -97,17 +98,20 @@ export class WhatsAppTracker {
     private probeStartTimes: Map<string, number> = new Map();
     private probeTimeouts: Map<string, NodeJS.Timeout> = new Map();
     private lastPresence: string | null = null;
+    private sessionId: number | null = null; // Database session ID
+    private lastLoggedState: string = ''; // Track state changes for logging
     public onUpdate?: (data: unknown) => void;
 
     // Store event listener references for proper cleanup (memory leak fix)
     private messagesUpdateListener: ((updates: { key: proto.IMessageKey, update: Partial<proto.IWebMessageInfo> }[]) => void) | null = null;
     private presenceUpdateListener: ((update: { id: string, presences: { [participant: string]: { lastKnownPresence: string } } }) => void) | null = null;
 
-    constructor(sock: WASocket, targetJid: string, debugMode: boolean = false) {
+    constructor(sock: WASocket, targetJid: string, debugMode: boolean = false, sessionId?: number) {
         this.sock = sock;
         this.targetJid = targetJid;
         this.trackedJids.add(targetJid);
         this.rttAnalyzer = new RttAnalyzer();
+        this.sessionId = sessionId ?? null;
         trackerLogger.setDebugMode(debugMode);
     }
 
@@ -328,6 +332,22 @@ export class WhatsAppTracker {
             if (metrics.consecutiveTimeouts >= 3) {
                 metrics.state = 'OFFLINE';
                 trackerLogger.info(`\n🔴 Device ${jid} marked as OFFLINE (${metrics.consecutiveTimeouts} consecutive timeouts)\n`);
+
+                // Log OFFLINE event to database
+                if (this.sessionId) {
+                    try {
+                        db.logEvent({
+                            sessionId: this.sessionId,
+                            jid: this.targetJid,
+                            eventType: 'offline',
+                            rttValue: timeout,
+                            state: 'OFFLINE',
+                            deviceJid: jid
+                        });
+                    } catch (err) {
+                        trackerLogger.debug('[DATABASE] Error logging offline event:', err);
+                    }
+                }
             } else {
                 trackerLogger.debug(`[DEVICE ${jid}] Timeout ${metrics.consecutiveTimeouts}/3 - not marking offline yet`);
             }
@@ -408,7 +428,40 @@ export class WhatsAppTracker {
             metrics.state
         );
 
+        const previousState = metrics.state;
         metrics.state = analysis.state;
+
+        // Log RTT measurement to database
+        if (this.sessionId) {
+            try {
+                db.logEvent({
+                    sessionId: this.sessionId,
+                    jid: this.targetJid,
+                    eventType: 'rtt',
+                    rttValue: metrics.lastRtt,
+                    avgRtt: analysis.movingAvg,
+                    medianRtt: analysis.median,
+                    threshold: analysis.threshold,
+                    state: analysis.state,
+                    deviceJid: jid
+                });
+
+                // Log state change if different from previous
+                if (previousState !== analysis.state && analysis.state !== 'Calibrating...') {
+                    const eventType = analysis.state.toLowerCase() as 'online' | 'offline' | 'standby';
+                    db.logEvent({
+                        sessionId: this.sessionId,
+                        jid: this.targetJid,
+                        eventType,
+                        state: analysis.state,
+                        deviceJid: jid
+                    });
+                    this.lastLoggedState = analysis.state;
+                }
+            } catch (err) {
+                trackerLogger.debug('[DATABASE] Error logging event:', err);
+            }
+        }
 
         // Normal mode: Formatted output
         trackerLogger.formatDeviceState(

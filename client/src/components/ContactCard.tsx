@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { Square, Activity, Wifi, Smartphone, Monitor, ChevronDown, ChevronUp, Edit2, Zap, Check, X, History, ArrowLeft, Play, AlertCircle } from 'lucide-react';
+import { Square, Activity, Wifi, Smartphone, Monitor, ChevronDown, ChevronUp, Edit2, Zap, Check, X, History, ArrowLeft, Play, AlertCircle, Archive, RotateCcw } from 'lucide-react';
 import clsx from 'clsx';
 
 interface TrackerData {
@@ -27,7 +27,10 @@ interface ContactCardProps {
     deviceCount: number;
     presence: string | null;
     profilePic: string | null;
-    onRemove: () => void;
+    isStopped: boolean;
+    onStop: () => void;
+    onRestart: () => void;
+    onArchive: () => void;
     privacyMode?: boolean;
     onRename?: (jid: string, newName: string) => void;
 }
@@ -40,7 +43,10 @@ export function ContactCard({
     deviceCount,
     presence,
     profilePic,
-    onRemove,
+    isStopped,
+    onStop,
+    onRestart,
+    onArchive,
     privacyMode = false,
     onRename
 }: ContactCardProps) {
@@ -51,11 +57,20 @@ export function ContactCard({
             devices[0].state)
         : 'Unknown';
 
-    const [isCollapsed, setIsCollapsed] = useState(false);
+    const [isCollapsed, setIsCollapsed] = useState(isStopped);
     const [isEditing, setIsEditing] = useState(false);
     const [nameInput, setNameInput] = useState(displayNumber);
     const [showStopConfirm, setShowStopConfirm] = useState(false);
+    const [showArchiveConfirm, setShowArchiveConfirm] = useState(false);
+    const [showRestartConfirm, setShowRestartConfirm] = useState(false);
     const [showLog, setShowLog] = useState(false);
+
+    // Auto-collapse when stopped
+    React.useEffect(() => {
+        if (isStopped) {
+            setIsCollapsed(true);
+        }
+    }, [isStopped]);
 
     // Blur phone number in privacy mode
     const blurredNumber = privacyMode ? displayNumber.replace(/\d/g, '•') : displayNumber;
@@ -140,12 +155,38 @@ export function ContactCard({
     };
 
     const confirmStop = () => {
-        onRemove();
+        onStop();
         setShowStopConfirm(false);
     };
 
     const cancelStop = () => {
         setShowStopConfirm(false);
+    };
+
+    const handleArchiveClick = () => {
+        setShowArchiveConfirm(true);
+    };
+
+    const confirmArchive = () => {
+        onArchive();
+        setShowArchiveConfirm(false);
+    };
+
+    const cancelArchive = () => {
+        setShowArchiveConfirm(false);
+    };
+
+    const handleRestartClick = () => {
+        setShowRestartConfirm(true);
+    };
+
+    const confirmRestart = () => {
+        onRestart();
+        setShowRestartConfirm(false);
+    };
+
+    const cancelRestart = () => {
+        setShowRestartConfirm(false);
     };
 
     // Helper to determine status color
@@ -159,18 +200,24 @@ export function ContactCard({
 
     const isOnline = currentStatus.toLowerCase().includes('online');
 
+    // Check if any confirmation is showing
+    const showingAnyConfirm = showStopConfirm || showArchiveConfirm || showRestartConfirm;
+
     return (
         <div className={clsx(
             "rounded-xl shadow-lg border overflow-hidden transition-all duration-300 relative",
-            isCollapsed && isOnline
+            isCollapsed && isOnline && !isStopped
                 ? "bg-green-50 border-green-200"
-                : "bg-gradient-to-br from-white to-gray-50 border-gray-200"
+                : isStopped
+                    ? "bg-gray-50 border-gray-300"
+                    : "bg-gradient-to-br from-white to-gray-50 border-gray-200"
         )}>
             {/* Header */}
-            {!showStopConfirm || !isCollapsed ? (
+            {!showingAnyConfirm || !isCollapsed ? (
                 <div className={clsx(
                     "border-b px-4 py-3 flex items-center justify-between gap-4 transition-colors",
-                    isCollapsed && isOnline ? "bg-green-50 border-green-100" : "bg-white border-gray-200"
+                    isCollapsed && isOnline && !isStopped ? "bg-green-50 border-green-100" :
+                        isStopped ? "bg-gray-50 border-gray-200" : "bg-white border-gray-200"
                 )}>
                     <div className="flex items-center gap-3 flex-1 min-w-0">
                         <button
@@ -256,22 +303,45 @@ export function ContactCard({
                             </div>
                         )}
 
-                        {/* Running Indicator (Rounded Mid) */}
-                        <div className="flex items-center gap-1.5 bg-green-50 px-2.5 py-1 rounded-md border border-green-100">
-                            <Zap size={12} className="text-green-600 animate-pulse fill-green-600" />
-                            <span className="text-[11px] font-bold text-green-700 animate-pulse">Running</span>
-                        </div>
-
-                        <button
-                            onClick={handleStopClick}
-                            className="bg-red-600 text-white hover:bg-red-700 px-4 py-2 rounded-lg flex items-center gap-2 font-medium transition-all text-sm"
-                        >
-                            <Square size={16} fill="currentColor" /> Stop
-                        </button>
+                        {isStopped ? (
+                            /* Stopped State - Show Archive and Restart buttons */
+                            <>
+                                <div className="flex items-center gap-1.5 bg-red-100 px-2.5 py-1 rounded-md border border-red-200">
+                                    <Square size={12} className="text-red-600" />
+                                    <span className="text-[11px] font-bold text-red-700">Terminato</span>
+                                </div>
+                                <button
+                                    onClick={handleArchiveClick}
+                                    className="bg-orange-500 text-white hover:bg-orange-600 px-4 py-2 rounded-lg flex items-center gap-2 font-medium transition-all text-sm"
+                                >
+                                    <Archive size={16} /> Archivia
+                                </button>
+                                <button
+                                    onClick={handleRestartClick}
+                                    className="bg-green-600 text-white hover:bg-green-700 px-4 py-2 rounded-lg flex items-center gap-2 font-medium transition-all text-sm"
+                                >
+                                    <RotateCcw size={16} /> Riavvia
+                                </button>
+                            </>
+                        ) : (
+                            /* Running State - Show Running indicator and Stop button */
+                            <>
+                                <div className="flex items-center gap-1.5 bg-green-50 px-2.5 py-1 rounded-md border border-green-100">
+                                    <Zap size={12} className="text-green-600 animate-pulse fill-green-600" />
+                                    <span className="text-[11px] font-bold text-green-700 animate-pulse">Running</span>
+                                </div>
+                                <button
+                                    onClick={handleStopClick}
+                                    className="bg-red-600 text-white hover:bg-red-700 px-4 py-2 rounded-lg flex items-center gap-2 font-medium transition-all text-sm"
+                                >
+                                    <Square size={16} fill="currentColor" /> Stop
+                                </button>
+                            </>
+                        )}
                     </div>
                 </div>
-            ) : (
-                /* Collapsed Confirmation State */
+            ) : showStopConfirm && isCollapsed ? (
+                /* Collapsed Stop Confirmation */
                 <div className="bg-red-50 border-b border-red-100 px-4 py-3 flex items-center justify-between gap-4 animate-in fade-in duration-200">
                     <div className="flex items-center gap-3 text-red-800">
                         <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center text-red-600 flex-shrink-0">
@@ -284,9 +354,37 @@ export function ContactCard({
                         <button onClick={confirmStop} className="px-3 py-1.5 bg-red-600 rounded text-sm font-medium text-white hover:bg-red-700 shadow-sm">Conferma</button>
                     </div>
                 </div>
-            )}
+            ) : showArchiveConfirm && isCollapsed ? (
+                /* Collapsed Archive Confirmation */
+                <div className="bg-orange-50 border-b border-orange-100 px-4 py-3 flex items-center justify-between gap-4 animate-in fade-in duration-200">
+                    <div className="flex items-center gap-3 text-orange-800">
+                        <div className="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center text-orange-600 flex-shrink-0">
+                            <Archive size={14} />
+                        </div>
+                        <span className="font-semibold text-sm">Archiviare il contatto?</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <button onClick={cancelArchive} className="px-3 py-1.5 bg-white border border-gray-200 rounded text-sm font-medium text-gray-600 hover:bg-gray-50">Annulla</button>
+                        <button onClick={confirmArchive} className="px-3 py-1.5 bg-orange-500 rounded text-sm font-medium text-white hover:bg-orange-600 shadow-sm">Archivia</button>
+                    </div>
+                </div>
+            ) : showRestartConfirm && isCollapsed ? (
+                /* Collapsed Restart Confirmation */
+                <div className="bg-green-50 border-b border-green-100 px-4 py-3 flex items-center justify-between gap-4 animate-in fade-in duration-200">
+                    <div className="flex items-center gap-3 text-green-800">
+                        <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center text-green-600 flex-shrink-0">
+                            <RotateCcw size={14} />
+                        </div>
+                        <span className="font-semibold text-sm">Riavviare il monitoraggio?</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <button onClick={cancelRestart} className="px-3 py-1.5 bg-white border border-gray-200 rounded text-sm font-medium text-gray-600 hover:bg-gray-50">Annulla</button>
+                        <button onClick={confirmRestart} className="px-3 py-1.5 bg-green-600 rounded text-sm font-medium text-white hover:bg-green-700 shadow-sm">Riavvia</button>
+                    </div>
+                </div>
+            ) : null}
 
-            {/* Confirmation Overlay for Expanded State */}
+            {/* Confirmation Overlay for Expanded State - Stop */}
             {showStopConfirm && !isCollapsed && (
                 <div className="absolute inset-0 bg-white/95 z-50 flex flex-col items-center justify-center p-6 animate-in fade-in zoom-in-95 duration-200">
                     <div className="w-16 h-16 rounded-full bg-red-50 flex items-center justify-center text-red-600 mb-4 shadow-sm">
@@ -308,6 +406,60 @@ export function ContactCard({
                             className="flex-1 px-4 py-2.5 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 transition-colors shadow-sm"
                         >
                             Conferma
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* Confirmation Overlay for Archive */}
+            {showArchiveConfirm && !isCollapsed && (
+                <div className="absolute inset-0 bg-white/95 z-50 flex flex-col items-center justify-center p-6 animate-in fade-in zoom-in-95 duration-200">
+                    <div className="w-16 h-16 rounded-full bg-orange-50 flex items-center justify-center text-orange-600 mb-4 shadow-sm">
+                        <Archive size={32} />
+                    </div>
+                    <h3 className="text-xl font-bold text-gray-900 mb-2">Archiviare il contatto?</h3>
+                    <p className="text-gray-500 text-center mb-6 max-w-xs">
+                        <span className="font-semibold text-gray-900">{blurredNumber}</span> verrà spostato nell'archivio. Potrai ripristinarlo in qualsiasi momento.
+                    </p>
+                    <div className="flex gap-3 w-full max-w-xs">
+                        <button
+                            onClick={cancelArchive}
+                            className="flex-1 px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition-colors"
+                        >
+                            Annulla
+                        </button>
+                        <button
+                            onClick={confirmArchive}
+                            className="flex-1 px-4 py-2.5 bg-orange-500 text-white rounded-lg font-medium hover:bg-orange-600 transition-colors shadow-sm"
+                        >
+                            Archivia
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* Confirmation Overlay for Restart */}
+            {showRestartConfirm && !isCollapsed && (
+                <div className="absolute inset-0 bg-white/95 z-50 flex flex-col items-center justify-center p-6 animate-in fade-in zoom-in-95 duration-200">
+                    <div className="w-16 h-16 rounded-full bg-green-50 flex items-center justify-center text-green-600 mb-4 shadow-sm">
+                        <RotateCcw size={32} />
+                    </div>
+                    <h3 className="text-xl font-bold text-gray-900 mb-2">Riavviare il monitoraggio?</h3>
+                    <p className="text-gray-500 text-center mb-6 max-w-xs">
+                        Il tracciamento di <span className="font-semibold text-gray-900">{blurredNumber}</span> ripartirà da zero.
+                    </p>
+                    <div className="flex gap-3 w-full max-w-xs">
+                        <button
+                            onClick={cancelRestart}
+                            className="flex-1 px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition-colors"
+                        >
+                            Annulla
+                        </button>
+                        <button
+                            onClick={confirmRestart}
+                            className="flex-1 px-4 py-2.5 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors shadow-sm"
+                        >
+                            Riavvia
                         </button>
                     </div>
                 </div>
