@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Eye, EyeOff, Disc } from 'lucide-react';
 import { socket } from '../App';
 import { ContactCard } from './ContactCard';
+import { CountrySelector } from './CountrySelector';
 
 interface TrackerData {
     rtt: number;
@@ -35,6 +36,7 @@ export function Dashboard() {
     const [contacts, setContacts] = useState<Map<string, ContactInfo>>(new Map());
     const [error, setError] = useState<string | null>(null);
     const [privacyMode, setPrivacyMode] = useState(false);
+    const [selectedPrefix, setSelectedPrefix] = useState('+39');
 
     useEffect(() => {
         function onTrackerUpdate(update: any) {
@@ -151,7 +153,8 @@ export function Dashboard() {
 
     const handleAdd = () => {
         if (!inputNumber) return;
-        socket.emit('add-contact', inputNumber);
+        const fullNumber = (selectedPrefix + inputNumber).replace('+', '');
+        socket.emit('add-contact', fullNumber);
     };
 
     const handleRemove = (jid: string) => {
@@ -186,14 +189,17 @@ export function Dashboard() {
                     </button>
                 </div>
                 <div className="flex gap-4">
-                    <input
-                        type="text"
-                        placeholder="Inserisci numero di telefono (es. 393331234567)"
-                        className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                        value={inputNumber}
-                        onChange={(e) => setInputNumber(e.target.value)}
-                        onKeyPress={(e) => e.key === 'Enter' && handleAdd()}
-                    />
+                    <div className="flex flex-1 border border-gray-300 rounded-lg focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500 bg-white items-center">
+                        <CountrySelector selectedPrefix={selectedPrefix} onSelect={setSelectedPrefix} />
+                        <input
+                            type="text"
+                            placeholder="Numero di telefono (es. 3331234567)"
+                            className="flex-1 px-4 py-2 outline-none h-full"
+                            value={inputNumber}
+                            onChange={(e) => setInputNumber(e.target.value)}
+                            onKeyPress={(e) => e.key === 'Enter' && handleAdd()}
+                        />
+                    </div>
                     <button
                         onClick={handleAdd}
                         className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2 font-medium transition-colors"
