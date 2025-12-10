@@ -18,6 +18,80 @@ import { WhatsAppTracker } from './tracker';
 import { validatePhoneNumber, createWhatsAppJid } from './utils/validation';
 import { config } from './config';
 import * as db from './services/database';
+import * as fs from 'fs';
+import * as path from 'path';
+
+/**
+ * Clear Baileys E2EE session files for a specific phone number.
+ * This is necessary to prevent the OFFLINE bug when restarting tracking.
+ * Baileys caches encryption sessions that become stale after stopping tracking.
+ * 
+ * IMPORTANT: Sessions are stored with LID (Local Identifier) not just the phone number.
+ * We need to find the LID mapping first, then delete all related session files.
+ */
+function clearBaileysSessions(phoneNumber: string): void {
+    const authDir = path.join(process.cwd(), 'auth_info_baileys');
+
+    if (!fs.existsSync(authDir)) {
+        console.log(`[SESSION] Auth directory not found, skipping cleanup`);
+        return;
+    }
+
+    try {
+        const phoneWithoutPlus = phoneNumber.replace('+', '');
+        let lidNumber: string | null = null;
+
+        // First, try to find the LID mapping for this phone number
+        const lidMappingFile = path.join(authDir, `lid-mapping-${phoneWithoutPlus}.json`);
+        if (fs.existsSync(lidMappingFile)) {
+            try {
+                const mappingContent = fs.readFileSync(lidMappingFile, 'utf-8');
+                const mapping = JSON.parse(mappingContent);
+                // The mapping contains the LID number
+                if (typeof mapping === 'string') {
+                    lidNumber = mapping.split('@')[0].split(':')[0];
+                } else if (mapping.lid) {
+                    lidNumber = mapping.lid.split('@')[0].split(':')[0];
+                }
+                console.log(`[SESSION] Found LID mapping: ${phoneWithoutPlus} -> ${lidNumber}`);
+            } catch (e) {
+                console.log(`[SESSION] Could not parse LID mapping file`);
+            }
+        }
+
+        const files = fs.readdirSync(authDir);
+        let deletedCount = 0;
+
+        // Find and delete session files related to this phone number AND its LID
+        for (const file of files) {
+            const shouldDelete =
+                // Phone number based files
+                (file.includes(phoneWithoutPlus) &&
+                    (file.startsWith('session-') ||
+                        file.startsWith('lid-mapping-') ||
+                        file.startsWith('device-list-'))) ||
+                // LID based files (if we found the LID)
+                (lidNumber && file.includes(lidNumber) &&
+                    (file.startsWith('session-') ||
+                        file.startsWith('lid-mapping-')));
+
+            if (shouldDelete) {
+                const filePath = path.join(authDir, file);
+                fs.unlinkSync(filePath);
+                deletedCount++;
+                console.log(`[SESSION] Deleted: ${file}`);
+            }
+        }
+
+        if (deletedCount > 0) {
+            console.log(`[SESSION] Cleared ${deletedCount} cached session files for ${phoneNumber}`);
+        } else {
+            console.log(`[SESSION] No cached sessions found for ${phoneNumber}`);
+        }
+    } catch (err) {
+        console.error(`[SESSION] Error clearing sessions:`, err);
+    }
+}
 
 const app = express();
 app.use(cors());
@@ -112,12 +186,39 @@ io.on('connection', (socket) => {
 
         const targetJid = createWhatsAppJid(validation.cleaned);
 
+        // IMPORTANT FIX: If tracker already exists, stop and remove it first
+        // This allows restarting tracking with clean state instead of rejecting
         if (trackers.has(targetJid)) {
-            socket.emit('error', { jid: targetJid, message: 'Already tracking this contact' });
-            return;
+            console.log(`[RESTART] Tracker already exists for ${targetJid}, stopping it first...`);
+            const existingTracker = trackers.get(targetJid);
+            if (existingTracker) {
+                existingTracker.stopTracking();
+                trackers.delete(targetJid);
+
+                // Also clean up session ID
+                const existingSessionId = sessionIds.get(targetJid);
+                if (existingSessionId) {
+                    db.logEvent({
+                        sessionId: existingSessionId,
+                        jid: targetJid,
+                        eventType: 'stop'
+                    });
+                    db.stopSession(targetJid);
+                    sessionIds.delete(targetJid);
+                }
+            }
+
+            // CRITICAL: Clear cached Baileys E2EE sessions to prevent OFFLINE bug
+            clearBaileysSessions(validation.cleaned);
+
+            console.log(`[RESTART] Old tracker stopped, proceeding with fresh tracker...`);
         }
 
         try {
+            // CRITICAL FIX: Force Baileys to refresh E2EE sessions for this JID
+            // When restarting tracking, Baileys may have stale encryption sessions
+            // that prevent message delivery. Calling onWhatsApp forces a refresh.
+            console.log(`[SESSION] Verifying and refreshing Baileys session for ${targetJid}...`);
             const results = await sock.onWhatsApp(targetJid);
             const result = results?.[0];
 

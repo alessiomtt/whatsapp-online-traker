@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { Square, Activity, Wifi, Smartphone, Monitor, ChevronDown, ChevronUp, Edit2, Zap, Check, X, History, ArrowLeft, Play, AlertCircle, Archive, RotateCcw } from 'lucide-react';
+import { Square, Activity, Wifi, Smartphone, Monitor, ChevronDown, ChevronUp, Edit2, Zap, Check, X, History, ArrowLeft, Play, AlertCircle, Archive, RotateCcw, CheckCircle } from 'lucide-react';
 import clsx from 'clsx';
 
 interface TrackerData {
@@ -78,7 +78,7 @@ export function ContactCard({
 
     // Generate activity log from data transitions
     interface LogEvent {
-        type: 'start' | 'calibration' | 'calibration_end' | 'online' | 'offline' | 'standby';
+        type: 'start' | 'stop' | 'restart' | 'calibration' | 'calibration_end' | 'online' | 'offline' | 'standby';
         timestamp: number;
         message: string;
     }
@@ -117,6 +117,7 @@ export function ContactCard({
                     });
                 }
 
+                // Handle state transitions
                 if (state.includes('online')) {
                     events.push({
                         type: 'online',
@@ -134,6 +135,18 @@ export function ContactCard({
                         type: 'offline',
                         timestamp: entry.timestamp,
                         message: 'Offline'
+                    });
+                } else if (state === 'stop') {
+                    events.push({
+                        type: 'stop',
+                        timestamp: entry.timestamp,
+                        message: 'Monitoraggio interrotto'
+                    });
+                } else if (state === 'start') {
+                    events.push({
+                        type: 'restart',
+                        timestamp: entry.timestamp,
+                        message: 'Monitoraggio riavviato'
                     });
                 }
                 prevState = state;
@@ -499,15 +512,18 @@ export function ContactCard({
                                             const getEventStyle = () => {
                                                 switch (event.type) {
                                                     case 'start':
+                                                    case 'restart':
                                                     case 'calibration':
                                                         return 'bg-blue-50 border-l-4 border-l-blue-500';
                                                     case 'calibration_end':
-                                                        return 'bg-red-50 border-l-4 border-l-red-500';
+                                                        return 'bg-green-50 border-l-4 border-l-green-500';
                                                     case 'online':
                                                         return 'bg-green-50 border-l-4 border-l-green-500';
                                                     case 'standby':
                                                         return 'bg-yellow-50 border-l-4 border-l-yellow-500';
                                                     case 'offline':
+                                                        return 'bg-red-50 border-l-4 border-l-red-500';
+                                                    case 'stop':
                                                         return 'bg-red-50 border-l-4 border-l-red-500';
                                                     default:
                                                         return 'bg-gray-50 border-l-4 border-l-gray-400';
@@ -521,7 +537,7 @@ export function ContactCard({
                                                     case 'calibration':
                                                         return <Activity size={14} className="text-blue-600" />;
                                                     case 'calibration_end':
-                                                        return <Square size={14} className="text-red-600" />;
+                                                        return <CheckCircle size={14} className="text-green-600" />;
                                                     case 'online':
                                                         return <Zap size={14} className="text-green-600 fill-green-600" />;
                                                     case 'standby':
@@ -536,10 +552,13 @@ export function ContactCard({
                                             const getEventTextColor = () => {
                                                 switch (event.type) {
                                                     case 'start':
+                                                    case 'restart':
                                                     case 'calibration':
                                                         return 'text-blue-800';
                                                     case 'calibration_end':
+                                                        return 'text-green-800';
                                                     case 'offline':
+                                                    case 'stop':
                                                         return 'text-red-800';
                                                     case 'online':
                                                         return 'text-green-800';

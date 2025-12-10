@@ -127,9 +127,23 @@ export class WhatsAppTracker {
         // Create and store event listener references for cleanup
         this.messagesUpdateListener = (updates) => {
             for (const update of updates) {
+                const remoteJid = update.key.remoteJid;
+
                 // Check if update is from any of the tracked JIDs (multi-device support)
-                if (update.key.remoteJid && this.trackedJids.has(update.key.remoteJid) && update.key.fromMe) {
-                    this.analyzeUpdate(update);
+                // Also check for LID-based JIDs that we haven't discovered yet
+                if (remoteJid && update.key.fromMe) {
+                    // Direct match - JID is already in trackedJids
+                    if (this.trackedJids.has(remoteJid)) {
+                        this.analyzeUpdate(update);
+                    }
+                    // LID discovery - if this is a LID (@lid) and we're tracking this conversation
+                    // The LID corresponds to our target if we're receiving fromMe messages for it
+                    else if (remoteJid.endsWith('@lid')) {
+                        // This is likely the LID version of our target - add it to tracking
+                        trackerLogger.debug(`[MULTI-DEVICE] Discovered LID for tracking: ${remoteJid}`);
+                        this.trackedJids.add(remoteJid);
+                        this.analyzeUpdate(update);
+                    }
                 }
             }
         };
@@ -177,6 +191,12 @@ export class WhatsAppTracker {
                 threshold: 0
             });
         }
+
+        // IMPORTANT: Wait before starting probe loop
+        // This gives Baileys time to establish/refresh E2EE sessions with the target
+        // Without this delay, probes may use stale sessions and fail delivery
+        console.log('[TRACKER] Waiting 2s for Baileys to establish sessions...');
+        await new Promise(resolve => setTimeout(resolve, 2000));
 
         // Start the probe loop
         this.probeLoop();
@@ -524,6 +544,7 @@ export class WhatsAppTracker {
     /**
      * Stop tracking and clean up resources
      * Properly removes event listeners to prevent memory leaks
+     * Clears all tracking state to prevent pollution across sessions
      */
     public stopTracking() {
         this.isTracking = false;
@@ -548,6 +569,19 @@ export class WhatsAppTracker {
 
         // Reset the RTT analyzer
         this.rttAnalyzer.reset();
+
+        // CRITICAL FIX: Clear device metrics to prevent state pollution
+        // Without this, old OFFLINE states and consecutiveTimeouts persist
+        // when restarting tracking on the same JID
+        this.deviceMetrics.clear();
+
+        // Clear tracked JIDs to prevent multi-device JID pollution
+        // Keep only the original target JID
+        this.trackedJids.clear();
+        this.trackedJids.add(this.targetJid);
+
+        // Reset presence to prevent stale data
+        this.lastPresence = null;
 
         trackerLogger.info(`\n⏹️ Tracking stopped for ${this.targetJid}\n`);
     }

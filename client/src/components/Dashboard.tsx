@@ -125,12 +125,13 @@ export function Dashboard() {
                 const next = new Map(prev);
                 const existing = next.get(data.jid);
 
-                // If contact already exists, update it but keep some data
+                // If contact already exists, update it but PRESERVE LOG DATA
                 if (existing) {
                     next.set(data.jid, {
                         ...existing,
                         isStopped: false,
-                        data: [], // Reset data for fresh tracking
+                        // IMPORTANT: Keep existing data to preserve log history across restarts
+                        // Only clear devices since they'll be re-detected
                         devices: []
                     });
                 } else {
@@ -208,8 +209,12 @@ export function Dashboard() {
 
         function onSessionLogs(data: { jid: string, logs: any[] }) {
             // Convert database logs to TrackerData format
+            // Include ALL event types: rtt, online, offline, standby, stop, start, restart
             const trackerData: TrackerData[] = data.logs
-                .filter(log => log.event_type === 'rtt' || log.event_type === 'online' || log.event_type === 'offline' || log.event_type === 'standby')
+                .filter(log => {
+                    const validTypes = ['rtt', 'online', 'offline', 'standby', 'stop', 'start'];
+                    return validTypes.includes(log.event_type);
+                })
                 .map(log => ({
                     rtt: log.rtt_value || 0,
                     avg: log.avg_rtt || 0,
@@ -609,12 +614,26 @@ function LogView({ data }: { data: TrackerData[] }) {
     for (const entry of data) {
         const state = entry.state.toLowerCase();
         if (state !== prevState) {
+            // Calibration events
+            if (state.includes('calibrat')) {
+                if (prevState && !prevState.includes('calibrat')) {
+                    events.push({ type: 'calibration', timestamp: entry.timestamp, message: 'Calibrazione in corso' });
+                }
+            } else if (prevState.includes('calibrat')) {
+                events.push({ type: 'calibration_end', timestamp: entry.timestamp, message: 'Calibrazione completata' });
+            }
+
+            // State transitions
             if (state.includes('online')) {
                 events.push({ type: 'online', timestamp: entry.timestamp, message: 'Online' });
             } else if (state === 'standby') {
                 events.push({ type: 'standby', timestamp: entry.timestamp, message: 'Standby' });
             } else if (state === 'offline') {
                 events.push({ type: 'offline', timestamp: entry.timestamp, message: 'Offline' });
+            } else if (state === 'stop') {
+                events.push({ type: 'stop', timestamp: entry.timestamp, message: 'Monitoraggio interrotto' });
+            } else if (state === 'start') {
+                events.push({ type: 'restart', timestamp: entry.timestamp, message: 'Monitoraggio riavviato' });
             }
             prevState = state;
         }
@@ -622,11 +641,21 @@ function LogView({ data }: { data: TrackerData[] }) {
 
     const getEventStyle = (type: string) => {
         switch (type) {
-            case 'start': return 'bg-blue-50 border-l-blue-500 text-blue-800';
-            case 'online': return 'bg-green-50 border-l-green-500 text-green-800';
-            case 'standby': return 'bg-yellow-50 border-l-yellow-500 text-yellow-800';
-            case 'offline': return 'bg-red-50 border-l-red-500 text-red-800';
-            default: return 'bg-gray-50 border-l-gray-400 text-gray-800';
+            case 'start':
+            case 'restart':
+            case 'calibration':
+                return 'bg-blue-50 border-l-blue-500 text-blue-800';
+            case 'calibration_end':
+                return 'bg-green-50 border-l-green-500 text-green-800';
+            case 'online':
+                return 'bg-green-50 border-l-green-500 text-green-800';
+            case 'standby':
+                return 'bg-yellow-50 border-l-yellow-500 text-yellow-800';
+            case 'offline':
+            case 'stop':
+                return 'bg-red-50 border-l-red-500 text-red-800';
+            default:
+                return 'bg-gray-50 border-l-gray-400 text-gray-800';
         }
     };
 
