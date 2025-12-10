@@ -48,7 +48,7 @@ const defaultConfig: Config = {
     deviceHistoryLimit: 50,        // Store up to 50 measurements per device for calibration
     recentRttCount: 3,             // Use last 3 RTTs for moving average
     probeTimeout: 10000,           // 10 seconds timeout for probe ACK
-    serverPort: 3000,
+    serverPort: 3001,
     corsOrigin: process.env.CORS_ORIGIN || "*",
     clientApiUrl: process.env.REACT_APP_API_URL || "http://localhost:3001"
 };
