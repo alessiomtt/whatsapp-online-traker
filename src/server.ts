@@ -16,6 +16,7 @@ import { pino } from 'pino';
 import { Boom } from '@hapi/boom';
 import { WhatsAppTracker } from './tracker';
 import { validatePhoneNumber, createWhatsAppJid } from './utils/validation';
+import { config } from './config';
 
 const app = express();
 app.use(cors());
@@ -23,7 +24,7 @@ app.use(cors());
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
     cors: {
-        origin: "*", // Allow all origins for dev
+        origin: config.corsOrigin,
         methods: ["GET", "POST"]
     }
 });
@@ -116,7 +117,7 @@ io.on('connection', (socket) => {
                 tracker.onUpdate = (data) => {
                     io.emit('tracker-update', {
                         jid: result.jid,
-                        ...data
+                        ...(data as object)
                     });
                 };
 
@@ -163,7 +164,6 @@ io.on('connection', (socket) => {
     });
 });
 
-const PORT = 3001;
-httpServer.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+httpServer.listen(config.serverPort, () => {
+    console.log(`Server running on port ${config.serverPort}`);
 });
