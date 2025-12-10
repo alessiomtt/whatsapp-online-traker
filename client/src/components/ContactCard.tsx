@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { Square, Activity, Wifi, Smartphone, Monitor, ChevronDown, ChevronUp, Edit2, Zap, Check, X } from 'lucide-react';
+import { Square, Activity, Wifi, Smartphone, Monitor, ChevronDown, ChevronUp, Edit2, Zap, Check, X, History, ArrowLeft, Play, AlertCircle } from 'lucide-react';
 import clsx from 'clsx';
 
 interface TrackerData {
@@ -55,10 +55,78 @@ export function ContactCard({
     const [isEditing, setIsEditing] = useState(false);
     const [nameInput, setNameInput] = useState(displayNumber);
     const [showStopConfirm, setShowStopConfirm] = useState(false);
+    const [showLog, setShowLog] = useState(false);
 
     // Blur phone number in privacy mode
     const blurredNumber = privacyMode ? displayNumber.replace(/\d/g, '•') : displayNumber;
     const isCustomName = displayNumber !== jid.split('@')[0];
+
+    // Generate activity log from data transitions
+    interface LogEvent {
+        type: 'start' | 'calibration' | 'calibration_end' | 'online' | 'offline' | 'standby';
+        timestamp: number;
+        message: string;
+    }
+
+    const activityLog = useMemo(() => {
+        const events: LogEvent[] = [];
+
+        if (data.length > 0) {
+            // First entry = start monitoring
+            events.push({
+                type: 'start',
+                timestamp: data[0].timestamp,
+                message: 'Monitoraggio avviato'
+            });
+        }
+
+        let prevState = '';
+        for (let i = 0; i < data.length; i++) {
+            const entry = data[i];
+            const state = entry.state.toLowerCase();
+
+            if (state !== prevState) {
+                if (state.includes('calibrat')) {
+                    if (prevState && !prevState.includes('calibrat')) {
+                        events.push({
+                            type: 'calibration',
+                            timestamp: entry.timestamp,
+                            message: 'Calibrazione in corso'
+                        });
+                    }
+                } else if (prevState.includes('calibrat')) {
+                    events.push({
+                        type: 'calibration_end',
+                        timestamp: entry.timestamp,
+                        message: 'Calibrazione completata'
+                    });
+                }
+
+                if (state.includes('online')) {
+                    events.push({
+                        type: 'online',
+                        timestamp: entry.timestamp,
+                        message: 'Online'
+                    });
+                } else if (state === 'standby') {
+                    events.push({
+                        type: 'standby',
+                        timestamp: entry.timestamp,
+                        message: 'Standby'
+                    });
+                } else if (state === 'offline') {
+                    events.push({
+                        type: 'offline',
+                        timestamp: entry.timestamp,
+                        message: 'Offline'
+                    });
+                }
+                prevState = state;
+            }
+        }
+
+        return events.reverse(); // Most recent first
+    }, [data]);
 
     const handleSaveName = () => {
         if (onRename && nameInput.trim()) {
@@ -161,6 +229,15 @@ export function ContactCard({
                                     >
                                         <Edit2 size={14} />
                                     </button>
+                                    <button
+                                        onClick={() => {
+                                            setShowLog(true);
+                                            setIsCollapsed(false);
+                                        }}
+                                        className="px-2.5 py-1 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors border border-blue-100"
+                                    >
+                                        <History size={12} /> Log
+                                    </button>
                                 </div>
                             )}
                         </div>
@@ -242,126 +319,236 @@ export function ContactCard({
                 isCollapsed ? "max-h-0 opacity-0" : "max-h-[500px] opacity-100"
             )}>
                 <div className="p-6">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        {/* Status Card */}
-                        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 flex flex-col items-center text-center">
-                            <div className="relative mb-4">
-                                <div className="w-32 h-32 rounded-full overflow-hidden bg-gray-100 border-4 border-white shadow-md">
-                                    {profilePic ? (
-                                        <img
-                                            src={profilePic}
-                                            alt="Profile"
-                                            className={clsx(
-                                                "w-full h-full object-cover transition-all duration-200",
-                                                privacyMode && "blur-xl scale-110"
-                                            )}
-                                            style={privacyMode ? {
-                                                filter: 'blur(16px) contrast(0.8)',
-                                            } : {}}
-                                        />
-                                    ) : (
-                                        <div className="w-full h-full flex items-center justify-center text-gray-400">
-                                            No Image
-                                        </div>
+                    {showLog ? (
+                        /* Activity Log View */
+                        <div className="space-y-4">
+                            <div className="flex items-center justify-between mb-4">
+                                <h4 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                                    <History size={20} className="text-blue-600" />
+                                    Storico Attività
+                                </h4>
+                                <button
+                                    onClick={() => setShowLog(false)}
+                                    className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
+                                >
+                                    <ArrowLeft size={14} /> Monitoraggio
+                                </button>
+                            </div>
+
+                            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden max-h-[400px] overflow-y-auto">
+                                {activityLog.length === 0 ? (
+                                    <div className="p-8 text-center text-gray-500">
+                                        <AlertCircle size={32} className="mx-auto mb-2 text-gray-400" />
+                                        <p>Nessun evento registrato</p>
+                                    </div>
+                                ) : (
+                                    <div className="divide-y divide-gray-100">
+                                        {activityLog.map((event, idx) => {
+                                            const getEventStyle = () => {
+                                                switch (event.type) {
+                                                    case 'start':
+                                                    case 'calibration':
+                                                        return 'bg-blue-50 border-l-4 border-l-blue-500';
+                                                    case 'calibration_end':
+                                                        return 'bg-red-50 border-l-4 border-l-red-500';
+                                                    case 'online':
+                                                        return 'bg-green-50 border-l-4 border-l-green-500';
+                                                    case 'standby':
+                                                        return 'bg-yellow-50 border-l-4 border-l-yellow-500';
+                                                    case 'offline':
+                                                        return 'bg-red-50 border-l-4 border-l-red-500';
+                                                    default:
+                                                        return 'bg-gray-50 border-l-4 border-l-gray-400';
+                                                }
+                                            };
+
+                                            const getEventIcon = () => {
+                                                switch (event.type) {
+                                                    case 'start':
+                                                        return <Play size={14} className="text-blue-600" />;
+                                                    case 'calibration':
+                                                        return <Activity size={14} className="text-blue-600" />;
+                                                    case 'calibration_end':
+                                                        return <Square size={14} className="text-red-600" />;
+                                                    case 'online':
+                                                        return <Zap size={14} className="text-green-600 fill-green-600" />;
+                                                    case 'standby':
+                                                        return <Monitor size={14} className="text-yellow-600" />;
+                                                    case 'offline':
+                                                        return <Wifi size={14} className="text-red-600" />;
+                                                    default:
+                                                        return <AlertCircle size={14} className="text-gray-500" />;
+                                                }
+                                            };
+
+                                            const getEventTextColor = () => {
+                                                switch (event.type) {
+                                                    case 'start':
+                                                    case 'calibration':
+                                                        return 'text-blue-800';
+                                                    case 'calibration_end':
+                                                    case 'offline':
+                                                        return 'text-red-800';
+                                                    case 'online':
+                                                        return 'text-green-800';
+                                                    case 'standby':
+                                                        return 'text-yellow-800';
+                                                    default:
+                                                        return 'text-gray-800';
+                                                }
+                                            };
+
+                                            return (
+                                                <div key={idx} className={clsx("px-4 py-3 flex items-center gap-3", getEventStyle())}>
+                                                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-white shadow-sm flex items-center justify-center">
+                                                        {getEventIcon()}
+                                                    </div>
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className={clsx("font-semibold text-sm", getEventTextColor())}>
+                                                            {event.message}
+                                                        </p>
+                                                        <p className="text-xs text-gray-500">
+                                                            {new Date(event.timestamp).toLocaleDateString('it-IT', {
+                                                                day: '2-digit',
+                                                                month: 'short',
+                                                                year: 'numeric'
+                                                            })} alle {new Date(event.timestamp).toLocaleTimeString('it-IT', {
+                                                                hour: '2-digit',
+                                                                minute: '2-digit',
+                                                                second: '2-digit'
+                                                            })}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    ) : (
+                        /* Real-time Monitoring View */
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            {/* Status Card */}
+                            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 flex flex-col items-center text-center">
+                                <div className="relative mb-4">
+                                    <div className="w-32 h-32 rounded-full overflow-hidden bg-gray-100 border-4 border-white shadow-md">
+                                        {profilePic ? (
+                                            <img
+                                                src={profilePic}
+                                                alt="Profile"
+                                                className={clsx(
+                                                    "w-full h-full object-cover transition-all duration-200",
+                                                    privacyMode && "blur-xl scale-110"
+                                                )}
+                                                style={privacyMode ? {
+                                                    filter: 'blur(16px) contrast(0.8)',
+                                                } : {}}
+                                            />
+                                        ) : (
+                                            <div className="w-full h-full flex items-center justify-center text-gray-400">
+                                                No Image
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className={clsx(
+                                        "absolute bottom-2 right-2 w-6 h-6 rounded-full border-2 border-white",
+                                        currentStatus === 'OFFLINE' ? "bg-red-500" :
+                                            currentStatus.includes('Online') ? "bg-green-500" : "bg-gray-400"
+                                    )} />
+                                </div>
+
+                                <div className="flex items-center gap-2 mb-4">
+                                    <span className={clsx(
+                                        "px-3 py-1 rounded-full text-sm font-medium",
+                                        getStatusColor(currentStatus)
+                                    )}>
+                                        {currentStatus}
+                                    </span>
+                                </div>
+
+                                <div className="mb-4">
+                                    <h4 className="text-xl font-bold text-gray-900 leading-tight">{blurredNumber}</h4>
+                                    {isCustomName && (
+                                        <p className="text-xs text-gray-400 font-mono mt-1">
+                                            {privacyMode ? jid.split('@')[0].replace(/\d/g, '•') : jid.split('@')[0]}
+                                        </p>
                                     )}
                                 </div>
-                                <div className={clsx(
-                                    "absolute bottom-2 right-2 w-6 h-6 rounded-full border-2 border-white",
-                                    currentStatus === 'OFFLINE' ? "bg-red-500" :
-                                        currentStatus.includes('Online') ? "bg-green-500" : "bg-gray-400"
-                                )} />
-                            </div>
 
-                            <div className="flex items-center gap-2 mb-4">
-                                <span className={clsx(
-                                    "px-3 py-1 rounded-full text-sm font-medium",
-                                    getStatusColor(currentStatus)
-                                )}>
-                                    {currentStatus}
-                                </span>
-                            </div>
+                                <div className="w-full pt-4 border-t border-gray-100 space-y-2">
+                                    <div className="flex justify-between items-center text-sm text-gray-600">
+                                        <span className="flex items-center gap-1"><Wifi size={16} /> Official Status</span>
+                                        <span className="font-medium">{presence || 'Unknown'}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center text-sm text-gray-600">
+                                        <span className="flex items-center gap-1"><Smartphone size={16} /> Devices</span>
+                                        <span className="font-medium">{deviceCount || 0}</span>
+                                    </div>
+                                </div>
 
-                            <div className="mb-4">
-                                <h4 className="text-xl font-bold text-gray-900 leading-tight">{blurredNumber}</h4>
-                                {isCustomName && (
-                                    <p className="text-xs text-gray-400 font-mono mt-1">
-                                        {privacyMode ? jid.split('@')[0].replace(/\d/g, '•') : jid.split('@')[0]}
-                                    </p>
+                                {/* Device List */}
+                                {devices.length > 0 && (
+                                    <div className="w-full pt-4 border-t border-gray-100 mt-4">
+                                        <h5 className="text-xs font-semibold text-gray-500 uppercase mb-2">Device States</h5>
+                                        <div className="space-y-1">
+                                            {devices.map((device, idx) => (
+                                                <div key={device.jid} className="flex items-center justify-between text-sm py-1">
+                                                    <div className="flex items-center gap-2">
+                                                        <Monitor size={14} className="text-gray-400" />
+                                                        <span className="text-gray-600">Device {idx + 1}</span>
+                                                    </div>
+                                                    <span className={clsx(
+                                                        "px-2 py-0.5 rounded text-xs font-medium",
+                                                        getStatusColor(device.state)
+                                                    )}>
+                                                        {device.state}
+                                                    </span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
                                 )}
                             </div>
 
-                            <div className="w-full pt-4 border-t border-gray-100 space-y-2">
-                                <div className="flex justify-between items-center text-sm text-gray-600">
-                                    <span className="flex items-center gap-1"><Wifi size={16} /> Official Status</span>
-                                    <span className="font-medium">{presence || 'Unknown'}</span>
-                                </div>
-                                <div className="flex justify-between items-center text-sm text-gray-600">
-                                    <span className="flex items-center gap-1"><Smartphone size={16} /> Devices</span>
-                                    <span className="font-medium">{deviceCount || 0}</span>
-                                </div>
-                            </div>
-
-                            {/* Device List */}
-                            {devices.length > 0 && (
-                                <div className="w-full pt-4 border-t border-gray-100 mt-4">
-                                    <h5 className="text-xs font-semibold text-gray-500 uppercase mb-2">Device States</h5>
-                                    <div className="space-y-1">
-                                        {devices.map((device, idx) => (
-                                            <div key={device.jid} className="flex items-center justify-between text-sm py-1">
-                                                <div className="flex items-center gap-2">
-                                                    <Monitor size={14} className="text-gray-400" />
-                                                    <span className="text-gray-600">Device {idx + 1}</span>
-                                                </div>
-                                                <span className={clsx(
-                                                    "px-2 py-0.5 rounded text-xs font-medium",
-                                                    getStatusColor(device.state)
-                                                )}>
-                                                    {device.state}
-                                                </span>
-                                            </div>
-                                        ))}
+                            {/* Metrics & Chart */}
+                            <div className="md:col-span-2 space-y-6">
+                                {/* Metrics Grid */}
+                                <div className="grid grid-cols-3 gap-4">
+                                    <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+                                        <div className="text-sm text-gray-500 mb-1 flex items-center gap-1"><Activity size={16} /> Current Avg RTT</div>
+                                        <div className="text-2xl font-bold text-gray-900">{lastData?.avg.toFixed(0) || '-'} ms</div>
+                                    </div>
+                                    <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+                                        <div className="text-sm text-gray-500 mb-1">Median (50)</div>
+                                        <div className="text-2xl font-bold text-gray-900">{lastData?.median.toFixed(0) || '-'} ms</div>
+                                    </div>
+                                    <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+                                        <div className="text-sm text-gray-500 mb-1">Threshold</div>
+                                        <div className="text-2xl font-bold text-blue-600">{lastData?.threshold.toFixed(0) || '-'} ms</div>
                                     </div>
                                 </div>
-                            )}
-                        </div>
 
-                        {/* Metrics & Chart */}
-                        <div className="md:col-span-2 space-y-6">
-                            {/* Metrics Grid */}
-                            <div className="grid grid-cols-3 gap-4">
-                                <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
-                                    <div className="text-sm text-gray-500 mb-1 flex items-center gap-1"><Activity size={16} /> Current Avg RTT</div>
-                                    <div className="text-2xl font-bold text-gray-900">{lastData?.avg.toFixed(0) || '-'} ms</div>
-                                </div>
-                                <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
-                                    <div className="text-sm text-gray-500 mb-1">Median (50)</div>
-                                    <div className="text-2xl font-bold text-gray-900">{lastData?.median.toFixed(0) || '-'} ms</div>
-                                </div>
-                                <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
-                                    <div className="text-sm text-gray-500 mb-1">Threshold</div>
-                                    <div className="text-2xl font-bold text-blue-600">{lastData?.threshold.toFixed(0) || '-'} ms</div>
+                                {/* Chart */}
+                                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 h-[300px]">
+                                    <h5 className="text-sm font-medium text-gray-500 mb-4">RTT History & Threshold</h5>
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <LineChart data={data}>
+                                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                                            <XAxis dataKey="timestamp" hide />
+                                            <YAxis domain={['auto', 'auto']} />
+                                            <Tooltip
+                                                labelFormatter={(t: number) => new Date(t).toLocaleTimeString()}
+                                                contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                                            />
+                                            <Line type="monotone" dataKey="avg" stroke="#3b82f6" strokeWidth={2} dot={false} name="Avg RTT" isAnimationActive={false} />
+                                            <Line type="step" dataKey="threshold" stroke="#ef4444" strokeDasharray="5 5" dot={false} name="Threshold" isAnimationActive={false} />
+                                        </LineChart>
+                                    </ResponsiveContainer>
                                 </div>
                             </div>
-
-                            {/* Chart */}
-                            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 h-[300px]">
-                                <h5 className="text-sm font-medium text-gray-500 mb-4">RTT History & Threshold</h5>
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <LineChart data={data}>
-                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-                                        <XAxis dataKey="timestamp" hide />
-                                        <YAxis domain={['auto', 'auto']} />
-                                        <Tooltip
-                                            labelFormatter={(t: number) => new Date(t).toLocaleTimeString()}
-                                            contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                                        />
-                                        <Line type="monotone" dataKey="avg" stroke="#3b82f6" strokeWidth={2} dot={false} name="Avg RTT" isAnimationActive={false} />
-                                        <Line type="step" dataKey="threshold" stroke="#ef4444" strokeDasharray="5 5" dot={false} name="Threshold" isAnimationActive={false} />
-                                    </LineChart>
-                                </ResponsiveContainer>
-                            </div>
                         </div>
-                    </div>
+                    )}
                 </div>
             </div>
         </div>
