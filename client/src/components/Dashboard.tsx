@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import {Eye, EyeOff, Plus} from 'lucide-react';
+import { Eye, EyeOff, Disc } from 'lucide-react';
 import { socket } from '../App';
 import { ContactCard } from './ContactCard';
 
@@ -163,14 +163,13 @@ export function Dashboard() {
             {/* Add Contact Form */}
             <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
                 <div className="flex justify-between items-center mb-4">
-                    <h2 className="text-xl font-semibold text-gray-900">Track Contacts</h2>
+                    <h2 className="text-xl font-semibold text-gray-900">Contatto da monitorare</h2>
                     <button
                         onClick={() => setPrivacyMode(!privacyMode)}
-                        className={`px-4 py-2 rounded-lg flex items-center gap-2 font-medium transition-all duration-200 ${
-                            privacyMode 
-                                ? 'bg-green-600 text-white hover:bg-green-700 shadow-md' 
-                                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                        }`}
+                        className={`px-4 py-2 rounded-lg flex items-center gap-2 font-medium transition-all duration-200 ${privacyMode
+                            ? 'bg-green-600 text-white hover:bg-green-700 shadow-md'
+                            : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                            }`}
                         title={privacyMode ? 'Privacy Mode: ON (Click to disable)' : 'Privacy Mode: OFF (Click to enable)'}
                     >
                         {privacyMode ? (
@@ -189,7 +188,7 @@ export function Dashboard() {
                 <div className="flex gap-4">
                     <input
                         type="text"
-                        placeholder="Enter phone number (e.g. 491701234567)"
+                        placeholder="Inserisci numero di telefono (es. 393331234567)"
                         className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                         value={inputNumber}
                         onChange={(e) => setInputNumber(e.target.value)}
@@ -199,7 +198,7 @@ export function Dashboard() {
                         onClick={handleAdd}
                         className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2 font-medium transition-colors"
                     >
-                        <Plus size={20} /> Add Contact
+                        <Disc size={20} /> Avvia
                     </button>
                 </div>
                 {error && <p className="mt-2 text-red-500 text-sm">{error}</p>}
@@ -208,8 +207,8 @@ export function Dashboard() {
             {/* Contact Cards */}
             {contacts.size === 0 ? (
                 <div className="bg-gray-50 border-2 border-dashed border-gray-300 rounded-xl p-12 text-center">
-                    <p className="text-gray-500 text-lg">No contacts being tracked</p>
-                    <p className="text-gray-400 text-sm mt-2">Add a contact above to start tracking</p>
+                    <p className="text-gray-500 text-lg">Nessun monitoraggio attivo</p>
+                    <p className="text-gray-400 text-sm mt-2">Aggiungi un contatto per iniziare il monitoraggio</p>
                 </div>
             ) : (
                 <div className="space-y-6">
