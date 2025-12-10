@@ -15,6 +15,7 @@ import makeWASocket, { DisconnectReason, useMultiFileAuthState } from '@whiskeys
 import { pino } from 'pino';
 import { Boom } from '@hapi/boom';
 import { WhatsAppTracker } from './tracker';
+import { validatePhoneNumber, createWhatsAppJid } from './utils/validation';
 
 const app = express();
 app.use(cors());
@@ -89,8 +90,15 @@ io.on('connection', (socket) => {
 
     socket.on('add-contact', async (number: string) => {
         console.log(`Request to track: ${number}`);
-        const cleanNumber = number.replace(/\D/g, '');
-        const targetJid = cleanNumber + '@s.whatsapp.net';
+
+        // Validate phone number
+        const validation = validatePhoneNumber(number);
+        if (!validation.isValid) {
+            socket.emit('error', { jid: null, message: validation.error || 'Invalid phone number' });
+            return;
+        }
+
+        const targetJid = createWhatsAppJid(validation.cleaned);
 
         if (trackers.has(targetJid)) {
             socket.emit('error', { jid: targetJid, message: 'Already tracking this contact' });
@@ -116,7 +124,7 @@ io.on('connection', (socket) => {
 
                 const ppUrl = await tracker.getProfilePicture();
 
-                let contactName = cleanNumber;
+                let contactName = validation.cleaned;
                 try {
                     const contactInfo = await sock.onWhatsApp(result.jid);
                     if (contactInfo && contactInfo[0]?.notify) {
@@ -126,7 +134,7 @@ io.on('connection', (socket) => {
                     console.log('[NAME] Could not fetch contact name, using number');
                 }
 
-                socket.emit('contact-added', { jid: result.jid, number: cleanNumber });
+                socket.emit('contact-added', { jid: result.jid, number: validation.cleaned });
 
                 io.emit('profile-pic', { jid: result.jid, url: ppUrl });
                 io.emit('contact-name', { jid: result.jid, name: contactName });
