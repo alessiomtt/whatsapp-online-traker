@@ -3,7 +3,7 @@ import { io, Socket } from 'socket.io-client';
 import { Login } from './components/Login';
 import { Dashboard } from './components/Dashboard';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { ArrowLeft, Lock, AlertCircle, Shield, Trash2, LogOut } from 'lucide-react';
+import { ArrowLeft, Lock, AlertCircle, Shield, Trash2, LogOut, Eye, EyeOff } from 'lucide-react';
 
 export const socket: Socket = io('http://localhost:3001');
 
@@ -28,6 +28,7 @@ function App() {
 
     // Admin panel state
     const [showAdminPanel, setShowAdminPanel] = useState(false);
+    const [privacyMode, setPrivacyMode] = useState(false);
     const [showPasswordDialog, setShowPasswordDialog] = useState(false);
     const [passwordInput, setPasswordInput] = useState('');
     const [passwordError, setPasswordError] = useState(false);
@@ -349,8 +350,8 @@ function App() {
                                         <div
                                             key={step}
                                             className={`w-2 h-2 rounded-full transition-colors ${disconnectProgress && disconnectProgress.step >= step
-                                                    ? 'bg-orange-600'
-                                                    : 'bg-gray-300'
+                                                ? 'bg-orange-600'
+                                                : 'bg-gray-300'
                                                 }`}
                                         />
                                     ))}
@@ -416,6 +417,31 @@ function App() {
                                     <div className="w-px h-4 bg-gray-300 mx-2" />
                                     <div className={`w-3 h-3 rounded-full ${isWhatsAppReady ? 'bg-green-500' : 'bg-yellow-500'}`} />
                                     <span className="text-sm text-gray-600">{isWhatsAppReady ? 'Whatsapp Pronto' : 'In attesa di WhatsApp'}</span>
+                                    {isWhatsAppReady && (
+                                        <>
+                                            <div className="w-px h-4 bg-gray-300 mx-2" />
+                                            <button
+                                                onClick={() => setPrivacyMode(!privacyMode)}
+                                                className={`px-3 py-1.5 rounded-lg flex items-center gap-2 font-medium text-xs transition-all duration-200 border ${privacyMode
+                                                    ? 'bg-white text-green-600 border-green-200 hover:bg-green-50'
+                                                    : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                                                    }`}
+                                                title={privacyMode ? 'Privacy Mode: ON (Click to disable)' : 'Privacy Mode: OFF (Click to enable)'}
+                                            >
+                                                {privacyMode ? (
+                                                    <>
+                                                        <EyeOff size={16} />
+                                                        <span>Privacy ON</span>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <Eye size={16} />
+                                                        <span>Privacy OFF</span>
+                                                    </>
+                                                )}
+                                            </button>
+                                        </>
+                                    )}
                                 </>
                             )}
                         </div>
@@ -427,7 +453,7 @@ function App() {
                         ) : !isWhatsAppReady ? (
                             <Login />
                         ) : (
-                            <Dashboard />
+                            <Dashboard privacyMode={privacyMode} />
                         )}
                     </main>
 

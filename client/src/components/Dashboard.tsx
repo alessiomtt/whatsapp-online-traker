@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Eye, EyeOff, Disc, Archive, ArrowLeft, ArrowUp, RotateCcw, Trash2, History, FileSpreadsheet, FileText } from 'lucide-react';
+import { Disc, Archive, ArrowLeft, ArrowUp, RotateCcw, Trash2, History, FileSpreadsheet, FileText } from 'lucide-react';
 import { socket } from '../App';
 import { ContactCard } from './ContactCard';
 import { CountrySelector } from './CountrySelector';
@@ -36,7 +36,11 @@ interface ContactInfo {
     sessionId?: number;
 }
 
-export function Dashboard() {
+interface DashboardProps {
+    privacyMode: boolean;
+}
+
+export function Dashboard({ privacyMode }: DashboardProps) {
     const [inputNumber, setInputNumber] = useState('');
     const [contacts, setContacts] = useState<Map<string, ContactInfo>>(new Map());
     const [archivedContacts, setArchivedContacts] = useState<ContactInfo[]>([]);
@@ -45,8 +49,8 @@ export function Dashboard() {
     const [expandedArchiveLogs, setExpandedArchiveLogs] = useState<Set<string>>(new Set());
     const [confirmDeleteJid, setConfirmDeleteJid] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
-    const [privacyMode, setPrivacyMode] = useState(false);
     const [selectedPrefix, setSelectedPrefix] = useState('+39');
+
 
     // Contact status confirmation dialog state
     const [pendingContact, setPendingContact] = useState<{
@@ -645,42 +649,19 @@ export function Dashboard() {
             <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
                 <div className="flex justify-between items-center mb-4">
                     <h2 className="text-xl font-semibold text-gray-900">Contatto da monitorare</h2>
-                    <div className="flex items-center gap-3">
-                        {/* Archive Button */}
-                        <button
-                            onClick={() => setShowArchive(true)}
-                            className="px-4 py-2 bg-amber-50 text-amber-700 rounded-lg flex items-center gap-2 font-medium transition-all duration-200 hover:bg-amber-100 border border-amber-200"
-                        >
-                            <Archive size={20} />
-                            <span>Archivio</span>
-                            {archivedContacts.length > 0 && (
-                                <span className="bg-amber-200 text-amber-800 px-1.5 py-0.5 rounded-full text-xs font-bold">
-                                    {archivedContacts.length}
-                                </span>
-                            )}
-                        </button>
-                        {/* Privacy Button */}
-                        <button
-                            onClick={() => setPrivacyMode(!privacyMode)}
-                            className={`px-4 py-2 rounded-lg flex items-center gap-2 font-medium transition-all duration-200 ${privacyMode
-                                ? 'bg-green-600 text-white hover:bg-green-700 shadow-md'
-                                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                                }`}
-                            title={privacyMode ? 'Privacy Mode: ON (Click to disable)' : 'Privacy Mode: OFF (Click to enable)'}
-                        >
-                            {privacyMode ? (
-                                <>
-                                    <EyeOff size={20} />
-                                    <span>Privacy ON</span>
-                                </>
-                            ) : (
-                                <>
-                                    <Eye size={20} />
-                                    <span>Privacy OFF</span>
-                                </>
-                            )}
-                        </button>
-                    </div>
+                    {/* Archive Button - positioned on the right */}
+                    <button
+                        onClick={() => setShowArchive(true)}
+                        className="px-3 py-1.5 bg-white text-amber-600 rounded-lg flex items-center gap-2 font-medium text-xs transition-all duration-200 hover:bg-amber-50 border border-amber-200"
+                    >
+                        <Archive size={16} />
+                        <span>Archivio</span>
+                        {archivedContacts.length > 0 && (
+                            <span className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full text-xs font-bold">
+                                {archivedContacts.length}
+                            </span>
+                        )}
+                    </button>
                 </div>
                 <div className="flex gap-4">
                     <div className="flex flex-1 border border-gray-300 rounded-lg focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500 bg-white items-center">
@@ -696,9 +677,9 @@ export function Dashboard() {
                     </div>
                     <button
                         onClick={handleAdd}
-                        className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2 font-medium transition-colors"
+                        className="px-4 py-1.5 bg-white text-blue-600 rounded-lg hover:bg-blue-50 flex items-center gap-2 font-medium text-xs transition-colors border border-blue-200"
                     >
-                        <Disc size={20} /> Avvia
+                        <Disc size={16} /> Avvia
                     </button>
                 </div>
                 {error && <p className="mt-2 text-red-500 text-sm">{error}</p>}

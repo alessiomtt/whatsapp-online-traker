@@ -286,69 +286,75 @@ export function ContactCard({
                                             setNameInput(displayNumber);
                                             setIsEditing(true);
                                         }}
-                                        className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 hover:bg-gray-100 rounded-full text-gray-500"
+                                        className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors"
                                     >
                                         <Edit2 size={14} />
                                     </button>
-                                    <button
-                                        onClick={() => {
-                                            setShowLog(true);
-                                            setIsCollapsed(false);
-                                        }}
-                                        className="px-2.5 py-1 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors border border-blue-100"
-                                    >
-                                        <History size={12} /> Log
-                                    </button>
+                                    {/* Status badge - only show when collapsed AND not stopped */}
+                                    {isCollapsed && !isStopped && (
+                                        <span className={clsx(
+                                            "px-2.5 py-1 rounded-full text-xs font-medium",
+                                            getStatusColor(currentStatus)
+                                        )}>
+                                            {currentStatus}
+                                        </span>
+                                    )}
                                 </div>
                             )}
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-3">
-                        {/* Collapsed Status Indicators (Rounded Full) */}
-                        {isCollapsed && (
-                            <div className="flex items-center gap-3 mr-2">
-                                <span className={clsx(
-                                    "px-3 py-1 rounded-full text-xs font-medium",
-                                    getStatusColor(currentStatus)
-                                )}>
-                                    {currentStatus}
-                                </span>
-                            </div>
-                        )}
-
+                    <div className="flex items-center gap-2">
                         {isStopped ? (
-                            /* Stopped State - Show Archive and Restart buttons */
+                            /* Stopped State - Log, Terminato, Archivia, Riavvia */
                             <>
-                                <div className="flex items-center gap-1.5 bg-red-100 px-2.5 py-1 rounded-md border border-red-200">
+                                <button
+                                    onClick={() => {
+                                        setShowLog(true);
+                                        setIsCollapsed(false);
+                                    }}
+                                    className="px-2.5 py-1.5 bg-white text-blue-600 hover:bg-blue-50 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors border border-blue-200"
+                                >
+                                    <History size={14} /> Log
+                                </button>
+                                <div className="flex items-center gap-1.5 bg-red-50 px-2.5 py-1.5 rounded-lg border border-red-200">
                                     <Square size={12} className="text-red-600" />
-                                    <span className="text-[11px] font-bold text-red-700">Terminato</span>
+                                    <span className="text-xs font-semibold text-red-700">Terminato</span>
                                 </div>
                                 <button
                                     onClick={handleArchiveClick}
-                                    className="bg-orange-500 text-white hover:bg-orange-600 px-4 py-2 rounded-lg flex items-center gap-2 font-medium transition-all text-sm"
+                                    className="px-3 py-1.5 bg-white text-orange-600 hover:bg-orange-50 rounded-lg flex items-center gap-1.5 font-medium transition-colors text-xs border border-orange-200"
                                 >
-                                    <Archive size={16} /> Archivia
+                                    <Archive size={14} /> Archivia
                                 </button>
                                 <button
                                     onClick={handleRestartClick}
-                                    className="bg-green-600 text-white hover:bg-green-700 px-4 py-2 rounded-lg flex items-center gap-2 font-medium transition-all text-sm"
+                                    className="px-3 py-1.5 bg-white text-green-600 hover:bg-green-50 rounded-lg flex items-center gap-1.5 font-medium transition-colors text-xs border border-green-200"
                                 >
-                                    <RotateCcw size={16} /> Riavvia
+                                    <RotateCcw size={14} /> Riavvia
                                 </button>
                             </>
                         ) : (
-                            /* Running State - Show Running indicator and Stop button */
+                            /* Running State - Log, Running indicator, Stop (far right) */
                             <>
-                                <div className="flex items-center gap-1.5 bg-green-50 px-2.5 py-1 rounded-md border border-green-100">
+                                <button
+                                    onClick={() => {
+                                        setShowLog(true);
+                                        setIsCollapsed(false);
+                                    }}
+                                    className="px-2.5 py-1.5 bg-white text-blue-600 hover:bg-blue-50 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors border border-blue-200"
+                                >
+                                    <History size={14} /> Log
+                                </button>
+                                <div className="flex items-center gap-1.5 bg-green-50 px-2.5 py-1.5 rounded-lg border border-green-200">
                                     <Zap size={12} className="text-green-600 animate-pulse fill-green-600" />
-                                    <span className="text-[11px] font-bold text-green-700 animate-pulse">Running</span>
+                                    <span className="text-xs font-semibold text-green-700 animate-pulse">Running</span>
                                 </div>
                                 <button
                                     onClick={handleStopClick}
-                                    className="bg-red-600 text-white hover:bg-red-700 px-4 py-2 rounded-lg flex items-center gap-2 font-medium transition-all text-sm"
+                                    className="px-3 py-1.5 bg-white text-red-600 hover:bg-red-50 rounded-lg flex items-center gap-1.5 font-medium transition-colors text-xs border border-red-200"
                                 >
-                                    <Square size={16} fill="currentColor" /> Stop
+                                    <Square size={14} fill="currentColor" /> Stop
                                 </button>
                             </>
                         )}
@@ -494,39 +500,37 @@ export function ContactCard({
                                     Storico Attività
                                 </h4>
                                 <div className="flex items-center gap-2">
-                                    {activityLog.length > 0 && (
-                                        <>
-                                            <button
-                                                onClick={() => exportToExcel({
-                                                    contactName: displayNumber !== jid.split('@')[0] ? displayNumber : undefined,
-                                                    contactNumber: jid.split('@')[0],
-                                                    jid: jid,
-                                                    events: activityLog
-                                                })}
-                                                className="flex items-center gap-1 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors"
-                                                title="Esporta in Excel"
-                                            >
-                                                <FileSpreadsheet size={14} />
-                                                Excel
-                                            </button>
-                                            <button
-                                                onClick={() => exportToPDF({
-                                                    contactName: displayNumber !== jid.split('@')[0] ? displayNumber : undefined,
-                                                    contactNumber: jid.split('@')[0],
-                                                    jid: jid,
-                                                    events: activityLog
-                                                })}
-                                                className="flex items-center gap-1 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors"
-                                                title="Esporta in PDF"
-                                            >
-                                                <FileText size={14} />
-                                                PDF
-                                            </button>
-                                        </>
-                                    )}
+                                    <>
+                                        <button
+                                            onClick={() => exportToExcel({
+                                                contactName: displayNumber !== jid.split('@')[0] ? displayNumber : undefined,
+                                                contactNumber: jid.split('@')[0],
+                                                jid: jid,
+                                                events: activityLog
+                                            })}
+                                            className="flex items-center gap-1 px-3 py-1.5 bg-white text-green-600 hover:bg-green-50 rounded-lg text-xs font-medium transition-colors border border-green-200"
+                                            title="Esporta in Excel"
+                                        >
+                                            <FileSpreadsheet size={14} />
+                                            Excel
+                                        </button>
+                                        <button
+                                            onClick={() => exportToPDF({
+                                                contactName: displayNumber !== jid.split('@')[0] ? displayNumber : undefined,
+                                                contactNumber: jid.split('@')[0],
+                                                jid: jid,
+                                                events: activityLog
+                                            })}
+                                            className="flex items-center gap-1 px-3 py-1.5 bg-white text-red-600 hover:bg-red-50 rounded-lg text-xs font-medium transition-colors border border-red-200"
+                                            title="Esporta in PDF"
+                                        >
+                                            <FileText size={14} />
+                                            PDF
+                                        </button>
+                                    </>
                                     <button
                                         onClick={() => setShowLog(false)}
-                                        className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
+                                        className="px-3 py-1.5 bg-white text-gray-600 hover:bg-gray-50 rounded-lg text-xs font-medium flex items-center gap-2 transition-colors border border-gray-200"
                                     >
                                         <ArrowLeft size={14} /> Monitoraggio
                                     </button>
