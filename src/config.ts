@@ -2,12 +2,15 @@
  * Configuration file for Device Activity Tracker
  *
  * Contains all configurable constants and values used throughout the application.
- * Values can be overridden via environment variables.
+ * Values can be overridden via environment variables or custom config JSON.
  *
  * Based on research methodology from:
  * "Careless Whisper: Exploiting Silent Delivery Receipts to Monitor Users on Mobile Instant Messengers"
  * by Gegenhuber et al., University of Vienna & SBA Research
  */
+
+import * as fs from 'fs';
+import * as path from 'path';
 
 export interface ProbeIntervalConfig {
     min: number;    // Minimum probe interval in ms
@@ -28,8 +31,18 @@ export interface Config {
     clientApiUrl: string;
 }
 
+// Subset of config that can be modified via admin panel
+export interface EditableConfig {
+    probeIntervalDefault: number;
+    offlineThreshold: number;
+    thresholdMultiplier: number;
+}
+
+// Path to custom config file
+const CUSTOM_CONFIG_PATH = path.join(process.cwd(), 'data', 'config.json');
+
 /**
- * Default configuration values
+ * Default configuration values (hardcoded, never changes)
  *
  * Probe intervals based on research paper:
  * - 2 seconds: Optimal for MediaTek-based devices (Xiaomi Poco M3 Pro 5G)
@@ -54,17 +67,111 @@ const defaultConfig: Config = {
 };
 
 /**
- * Get configuration with environment variable overrides
+ * Get default editable config values
+ */
+export function getDefaultEditableConfig(): EditableConfig {
+    return {
+        probeIntervalDefault: defaultConfig.probeInterval.default,
+        offlineThreshold: defaultConfig.offlineThreshold,
+        thresholdMultiplier: defaultConfig.thresholdMultiplier
+    };
+}
+
+/**
+ * Load custom config from JSON file if it exists
+ */
+function loadCustomConfig(): Partial<EditableConfig> | null {
+    try {
+        if (fs.existsSync(CUSTOM_CONFIG_PATH)) {
+            const data = fs.readFileSync(CUSTOM_CONFIG_PATH, 'utf-8');
+            const parsed = JSON.parse(data);
+            console.log('[CONFIG] Loaded custom config from', CUSTOM_CONFIG_PATH);
+            return parsed;
+        }
+    } catch (err) {
+        console.error('[CONFIG] Error loading custom config:', err);
+    }
+    return null;
+}
+
+/**
+ * Save custom config to JSON file
+ */
+export function saveCustomConfig(editableConfig: EditableConfig): boolean {
+    try {
+        // Ensure data directory exists
+        const dataDir = path.dirname(CUSTOM_CONFIG_PATH);
+        if (!fs.existsSync(dataDir)) {
+            fs.mkdirSync(dataDir, { recursive: true });
+        }
+
+        fs.writeFileSync(CUSTOM_CONFIG_PATH, JSON.stringify(editableConfig, null, 2), 'utf-8');
+        console.log('[CONFIG] Saved custom config to', CUSTOM_CONFIG_PATH);
+        return true;
+    } catch (err) {
+        console.error('[CONFIG] Error saving custom config:', err);
+        return false;
+    }
+}
+
+/**
+ * Delete custom config file (reset to defaults)
+ */
+export function resetToDefaultConfig(): boolean {
+    try {
+        if (fs.existsSync(CUSTOM_CONFIG_PATH)) {
+            fs.unlinkSync(CUSTOM_CONFIG_PATH);
+            console.log('[CONFIG] Deleted custom config, reset to defaults');
+        }
+        return true;
+    } catch (err) {
+        console.error('[CONFIG] Error resetting config:', err);
+        return false;
+    }
+}
+
+/**
+ * Check if using custom config
+ */
+export function hasCustomConfig(): boolean {
+    return fs.existsSync(CUSTOM_CONFIG_PATH);
+}
+
+/**
+ * Get current editable config (custom if exists, else defaults)
+ */
+export function getCurrentEditableConfig(): EditableConfig {
+    const custom = loadCustomConfig();
+    const defaults = getDefaultEditableConfig();
+
+    if (custom) {
+        return {
+            probeIntervalDefault: custom.probeIntervalDefault ?? defaults.probeIntervalDefault,
+            offlineThreshold: custom.offlineThreshold ?? defaults.offlineThreshold,
+            thresholdMultiplier: custom.thresholdMultiplier ?? defaults.thresholdMultiplier
+        };
+    }
+
+    return defaults;
+}
+
+/**
+ * Get full configuration with custom overrides applied
  */
 export function getConfig(): Config {
+    const customEditable = loadCustomConfig();
+
     return {
         probeInterval: {
             min: parseInt(process.env.PROBE_INTERVAL_MIN || String(defaultConfig.probeInterval.min), 10),
             max: parseInt(process.env.PROBE_INTERVAL_MAX || String(defaultConfig.probeInterval.max), 10),
-            default: parseInt(process.env.PROBE_INTERVAL_DEFAULT || String(defaultConfig.probeInterval.default), 10)
+            default: customEditable?.probeIntervalDefault ??
+                parseInt(process.env.PROBE_INTERVAL_DEFAULT || String(defaultConfig.probeInterval.default), 10)
         },
-        offlineThreshold: parseInt(process.env.OFFLINE_THRESHOLD || String(defaultConfig.offlineThreshold), 10),
-        thresholdMultiplier: parseFloat(process.env.THRESHOLD_MULTIPLIER || String(defaultConfig.thresholdMultiplier)),
+        offlineThreshold: customEditable?.offlineThreshold ??
+            parseInt(process.env.OFFLINE_THRESHOLD || String(defaultConfig.offlineThreshold), 10),
+        thresholdMultiplier: customEditable?.thresholdMultiplier ??
+            parseFloat(process.env.THRESHOLD_MULTIPLIER || String(defaultConfig.thresholdMultiplier)),
         globalHistoryLimit: parseInt(process.env.GLOBAL_HISTORY_LIMIT || String(defaultConfig.globalHistoryLimit), 10),
         deviceHistoryLimit: parseInt(process.env.DEVICE_HISTORY_LIMIT || String(defaultConfig.deviceHistoryLimit), 10),
         recentRttCount: parseInt(process.env.RECENT_RTT_COUNT || String(defaultConfig.recentRttCount), 10),

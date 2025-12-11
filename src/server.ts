@@ -16,7 +16,7 @@ import { pino } from 'pino';
 import { Boom } from '@hapi/boom';
 import { WhatsAppTracker } from './tracker';
 import { validatePhoneNumber, createWhatsAppJid } from './utils/validation';
-import { config } from './config';
+import { config, getCurrentEditableConfig, getDefaultEditableConfig, saveCustomConfig, resetToDefaultConfig, hasCustomConfig, EditableConfig } from './config';
 import * as db from './services/database';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -495,6 +495,76 @@ io.on('connection', (socket) => {
 
         // Notify all clients
         io.emit('database-cleared');
+    });
+
+    // ADMIN: Get current configuration
+    socket.on('admin-get-config', () => {
+        console.log('[ADMIN] Request to get configuration');
+
+        const currentConfig = getCurrentEditableConfig();
+        const defaultConfig = getDefaultEditableConfig();
+        const isCustom = hasCustomConfig();
+
+        socket.emit('config-data', {
+            current: currentConfig,
+            defaults: defaultConfig,
+            isCustom: isCustom
+        });
+    });
+
+    // ADMIN: Save configuration (requires restart)
+    socket.on('admin-save-config', (newConfig: EditableConfig) => {
+        console.log('[ADMIN] Request to save configuration:', newConfig);
+
+        // Validate ranges
+        const errors: string[] = [];
+
+        if (newConfig.probeIntervalDefault < 50 || newConfig.probeIntervalDefault > 60000) {
+            errors.push('Intervallo Probe deve essere tra 50 e 60000 ms');
+        }
+        if (newConfig.offlineThreshold < 1000 || newConfig.offlineThreshold > 30000) {
+            errors.push('Soglia Offline deve essere tra 1000 e 30000 ms');
+        }
+        if (newConfig.thresholdMultiplier < 0.5 || newConfig.thresholdMultiplier > 1.5) {
+            errors.push('Moltiplicatore Soglia deve essere tra 0.5 e 1.5');
+        }
+
+        if (errors.length > 0) {
+            socket.emit('config-save-error', { errors });
+            return;
+        }
+
+        // Save to JSON
+        const success = saveCustomConfig(newConfig);
+
+        if (success) {
+            socket.emit('config-saved', {
+                message: 'Configurazione salvata. Riavvia il server per applicare le modifiche.',
+                config: newConfig
+            });
+        } else {
+            socket.emit('config-save-error', {
+                errors: ['Errore durante il salvataggio della configurazione']
+            });
+        }
+    });
+
+    // ADMIN: Reset configuration to defaults
+    socket.on('admin-reset-config', () => {
+        console.log('[ADMIN] Request to reset configuration to defaults');
+
+        const success = resetToDefaultConfig();
+
+        if (success) {
+            socket.emit('config-reset', {
+                message: 'Configurazione ripristinata ai valori di default. Riavvia il server per applicare.',
+                config: getDefaultEditableConfig()
+            });
+        } else {
+            socket.emit('config-save-error', {
+                errors: ['Errore durante il ripristino della configurazione']
+            });
+        }
     });
 
     // ADMIN: Disconnect WhatsApp (delete auth and force re-login)

@@ -85,3 +85,6 @@ data/
 *.db-journal
 *.db-wal
 *.db-shm
+
+# Research materials (not for version control)
+paper/

@@ -3,7 +3,7 @@ import { io, Socket } from 'socket.io-client';
 import { Login } from './components/Login';
 import { Dashboard } from './components/Dashboard';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { ArrowLeft, Lock, AlertCircle, Shield, Trash2, LogOut, Eye, EyeOff } from 'lucide-react';
+import { ArrowLeft, Lock, AlertCircle, Shield, Trash2, LogOut, Eye, EyeOff, Settings, RotateCcw } from 'lucide-react';
 
 export const socket: Socket = io('http://localhost:3001');
 
@@ -160,6 +160,84 @@ function App() {
         socket.on('whatsapp-disconnected', onDisconnected);
     };
 
+    // Admin: Configuration Management
+    interface EditableConfig {
+        probeIntervalDefault: number;
+        offlineThreshold: number;
+        thresholdMultiplier: number;
+    }
+
+    const [configData, setConfigData] = useState<{
+        current: EditableConfig;
+        defaults: EditableConfig;
+        isCustom: boolean;
+    } | null>(null);
+    const [configForm, setConfigForm] = useState<EditableConfig>({
+        probeIntervalDefault: 2000,
+        offlineThreshold: 10000,
+        thresholdMultiplier: 0.9
+    });
+    const [configLoading, setConfigLoading] = useState(false);
+    const [configSaving, setConfigSaving] = useState(false);
+    const [configMessage, setConfigMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+
+    // Load config when admin panel opens
+    useEffect(() => {
+        if (showAdminPanel) {
+            setConfigLoading(true);
+            socket.emit('admin-get-config');
+
+            const onConfigData = (data: any) => {
+                setConfigData(data);
+                setConfigForm(data.current);
+                setConfigLoading(false);
+            };
+
+            const onConfigSaved = (data: any) => {
+                setConfigMessage({ type: 'success', text: data.message });
+                setConfigSaving(false);
+                // Reload config data
+                socket.emit('admin-get-config');
+            };
+
+            const onConfigReset = (data: any) => {
+                setConfigMessage({ type: 'success', text: data.message });
+                setConfigForm(data.config);
+                setConfigSaving(false);
+                // Reload config data
+                socket.emit('admin-get-config');
+            };
+
+            const onConfigError = (data: any) => {
+                setConfigMessage({ type: 'error', text: data.errors.join(', ') });
+                setConfigSaving(false);
+            };
+
+            socket.on('config-data', onConfigData);
+            socket.on('config-saved', onConfigSaved);
+            socket.on('config-reset', onConfigReset);
+            socket.on('config-save-error', onConfigError);
+
+            return () => {
+                socket.off('config-data', onConfigData);
+                socket.off('config-saved', onConfigSaved);
+                socket.off('config-reset', onConfigReset);
+                socket.off('config-save-error', onConfigError);
+            };
+        }
+    }, [showAdminPanel]);
+
+    const handleSaveConfig = () => {
+        setConfigSaving(true);
+        setConfigMessage(null);
+        socket.emit('admin-save-config', configForm);
+    };
+
+    const handleResetConfig = () => {
+        setConfigSaving(true);
+        setConfigMessage(null);
+        socket.emit('admin-reset-config');
+    };
 
     // Admin Panel Component
     const AdminPanel = () => (
@@ -237,6 +315,153 @@ function App() {
                             Disconnetti
                         </button>
                     </div>
+                </div>
+            </div>
+
+            {/* Configuration Parameters Section */}
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                <div className="px-6 py-4 border-b border-gray-100 bg-gray-50">
+                    <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+                        <Settings size={20} />
+                        Configurazione Parametri
+                    </h3>
+                </div>
+                <div className="p-6 space-y-6">
+                    {/* Warning Alert */}
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                        <div className="flex items-start gap-3">
+                            <AlertCircle size={20} className="text-amber-600 flex-shrink-0 mt-0.5" />
+                            <div>
+                                <p className="font-medium text-amber-800">Attenzione</p>
+                                <p className="text-sm text-amber-700">
+                                    Le modifiche ai parametri richiedono il riavvio del server per essere applicate.
+                                    {configData?.isCustom && (
+                                        <span className="block mt-1 font-medium">
+                                            ⚡ Stai utilizzando una configurazione personalizzata.
+                                        </span>
+                                    )}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Success/Error Messages */}
+                    {configMessage && (
+                        <div className={`p-4 rounded-lg flex items-center gap-2 ${configMessage.type === 'success'
+                                ? 'bg-green-50 border border-green-200 text-green-800'
+                                : 'bg-red-50 border border-red-200 text-red-800'
+                            }`}>
+                            {configMessage.type === 'success' ? (
+                                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                                </svg>
+                            ) : (
+                                <AlertCircle size={20} />
+                            )}
+                            <span className="font-medium">{configMessage.text}</span>
+                        </div>
+                    )}
+
+                    {configLoading ? (
+                        <div className="flex items-center justify-center py-8">
+                            <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                        </div>
+                    ) : (
+                        <>
+                            {/* Probe Interval */}
+                            <div className="space-y-2">
+                                <label className="block">
+                                    <span className="text-sm font-medium text-gray-700">Intervallo Probe (ms)</span>
+                                    <input
+                                        type="number"
+                                        value={configForm.probeIntervalDefault}
+                                        onChange={(e) => setConfigForm({ ...configForm, probeIntervalDefault: parseInt(e.target.value) || 0 })}
+                                        className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                        min={50}
+                                        max={60000}
+                                    />
+                                </label>
+                                <p className="text-xs text-gray-500">
+                                    Tempo tra ogni rilevamento dello stato. Valori più bassi = rilevamento più veloce ma maggior consumo.
+                                    <br />
+                                    <span className="font-medium">Range: 50-60000 ms</span> |
+                                    <span className="text-blue-600"> Default: {configData?.defaults.probeIntervalDefault || 2000} ms</span>
+                                </p>
+                            </div>
+
+                            {/* Offline Threshold */}
+                            <div className="space-y-2">
+                                <label className="block">
+                                    <span className="text-sm font-medium text-gray-700">Soglia Offline (ms)</span>
+                                    <input
+                                        type="number"
+                                        value={configForm.offlineThreshold}
+                                        onChange={(e) => setConfigForm({ ...configForm, offlineThreshold: parseInt(e.target.value) || 0 })}
+                                        className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                        min={1000}
+                                        max={30000}
+                                    />
+                                </label>
+                                <p className="text-xs text-gray-500">
+                                    RTT (Round-Trip Time) sopra questa soglia indica che il dispositivo è offline o irraggiungibile.
+                                    <br />
+                                    <span className="font-medium">Range: 1000-30000 ms</span> |
+                                    <span className="text-blue-600"> Default: {configData?.defaults.offlineThreshold || 10000} ms</span>
+                                </p>
+                            </div>
+
+                            {/* Threshold Multiplier */}
+                            <div className="space-y-2">
+                                <label className="block">
+                                    <span className="text-sm font-medium text-gray-700">Moltiplicatore Soglia</span>
+                                    <input
+                                        type="number"
+                                        value={configForm.thresholdMultiplier}
+                                        onChange={(e) => setConfigForm({ ...configForm, thresholdMultiplier: parseFloat(e.target.value) || 0 })}
+                                        className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                        min={0.5}
+                                        max={1.5}
+                                        step={0.1}
+                                    />
+                                </label>
+                                <p className="text-xs text-gray-500">
+                                    Determina la sensibilità nel rilevare cambiamenti di stato. Valori più bassi = più sensibile.
+                                    <br />
+                                    <span className="font-medium">Range: 0.5-1.5</span> |
+                                    <span className="text-blue-600"> Default: {configData?.defaults.thresholdMultiplier || 0.9}</span>
+                                </p>
+                            </div>
+
+                            {/* Buttons */}
+                            <div className="flex gap-3 pt-4 border-t border-gray-100">
+                                <button
+                                    onClick={handleResetConfig}
+                                    disabled={configSaving || !configData?.isCustom}
+                                    className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg font-medium transition-colors flex items-center gap-2 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    <RotateCcw size={18} />
+                                    Ripristina Default
+                                </button>
+                                <button
+                                    onClick={handleSaveConfig}
+                                    disabled={configSaving}
+                                    className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                                >
+                                    {configSaving ? (
+                                        <>
+                                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                            Salvataggio...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Settings size={18} />
+                                            Salva e Riavvia Server
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                        </>
+                    )}
                 </div>
             </div>
 
