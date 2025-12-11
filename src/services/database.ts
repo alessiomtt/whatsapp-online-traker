@@ -351,6 +351,22 @@ export function getMostRecentSession(jid: string): Session | undefined {
 }
 
 /**
+ * Clear all data from the database (admin function)
+ * Deletes all sessions and activity logs
+ */
+export function clearAllData(): void {
+    const database = getDatabase();
+
+    // Delete all activity logs first (foreign key constraint)
+    database.prepare(`DELETE FROM activity_logs`).run();
+
+    // Delete all sessions
+    database.prepare(`DELETE FROM sessions`).run();
+
+    console.log('[DATABASE] All data cleared');
+}
+
+/**
  * Close the database connection
  */
 export function closeDatabase(): void {
@@ -360,3 +376,4 @@ export function closeDatabase(): void {
         console.log('[DATABASE] Connection closed');
     }
 }
+

@@ -443,7 +443,29 @@ io.on('connection', (socket) => {
         db.updateSessionName(data.jid, data.name);
         io.emit('contact-name', data);
     });
+
+    // ADMIN: Clear entire database
+    socket.on('admin-clear-database', () => {
+        console.log('[ADMIN] Request to clear entire database');
+
+        // Stop all active trackers first
+        trackers.forEach((tracker, jid) => {
+            console.log(`[ADMIN] Stopping tracker for ${jid}`);
+            tracker.stopTracking();
+        });
+        trackers.clear();
+        sessionIds.clear();
+
+        // Clear database
+        db.clearAllData();
+
+        console.log('[ADMIN] Database cleared successfully');
+
+        // Notify all clients
+        io.emit('database-cleared');
+    });
 });
+
 
 // Graceful shutdown
 process.on('SIGINT', () => {
