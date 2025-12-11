@@ -124,21 +124,44 @@ export function getDatabase(): Database.Database {
 }
 
 /**
- * Create a new tracking session
+ * Create a new tracking session or reactivate an existing stopped session
+ * 
+ * IMPORTANT: When restarting tracking for a contact, we should reuse the existing
+ * stopped session instead of creating a new one. This prevents duplicate sessions
+ * from accumulating in the archive.
  */
 export function createSession(jid: string, phoneNumber: string): Session {
     const database = getDatabase();
 
     // Check if there's already an active session for this JID
-    const existing = database.prepare(`
+    const activeSession = database.prepare(`
         SELECT * FROM sessions WHERE jid = ? AND is_active = 1
     `).get(jid) as Session | undefined;
 
-    if (existing) {
+    if (activeSession) {
         // Return existing active session
-        return existing;
+        return activeSession;
     }
 
+    // Check if there's a stopped (but not archived) session that we can reactivate
+    const stoppedSession = database.prepare(`
+        SELECT * FROM sessions WHERE jid = ? AND is_active = 0 AND is_archived = 0
+        ORDER BY stopped_at DESC LIMIT 1
+    `).get(jid) as Session | undefined;
+
+    if (stoppedSession) {
+        // Reactivate the stopped session instead of creating a new one
+        database.prepare(`
+            UPDATE sessions 
+            SET is_active = 1, stopped_at = NULL, started_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        `).run(stoppedSession.id);
+
+        // Return the reactivated session
+        return database.prepare(`SELECT * FROM sessions WHERE id = ?`).get(stoppedSession.id) as Session;
+    }
+
+    // No existing session found, create a new one
     const stmt = database.prepare(`
         INSERT INTO sessions (jid, phone_number, is_active, is_archived)
         VALUES (?, ?, 1, 0)

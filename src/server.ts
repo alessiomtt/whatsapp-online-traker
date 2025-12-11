@@ -174,6 +174,69 @@ io.on('connection', (socket) => {
         sessionId: s.id
     })));
 
+    // Check if contact exists (active, stopped, or archived) before adding
+    socket.on('check-contact-status', (number: string) => {
+        const validation = validatePhoneNumber(number);
+        if (!validation.isValid) {
+            socket.emit('contact-status', {
+                number,
+                status: 'invalid',
+                error: validation.error || 'Invalid phone number'
+            });
+            return;
+        }
+
+        const targetJid = createWhatsAppJid(validation.cleaned);
+
+        // Check if actively being tracked
+        if (trackers.has(targetJid)) {
+            const session = db.getSessionByJid(targetJid);
+            socket.emit('contact-status', {
+                number,
+                jid: targetJid,
+                status: 'active',
+                contactName: session?.custom_name || validation.cleaned,
+                profilePic: session?.profile_pic_url
+            });
+            return;
+        }
+
+        // Check database for stopped or archived sessions
+        const mostRecent = db.getMostRecentSession(targetJid);
+        if (mostRecent) {
+            socket.emit('contact-status', {
+                number,
+                jid: targetJid,
+                status: 'stopped',
+                contactName: mostRecent.custom_name || validation.cleaned,
+                profilePic: mostRecent.profile_pic_url
+            });
+            return;
+        }
+
+        // Check for archived session
+        const archivedSessions = db.getArchivedSessions();
+        const archived = archivedSessions.find(s => s.jid === targetJid);
+        if (archived) {
+            socket.emit('contact-status', {
+                number,
+                jid: targetJid,
+                status: 'archived',
+                contactName: archived.custom_name || validation.cleaned,
+                profilePic: archived.profile_pic_url,
+                archivedAt: archived.archived_at
+            });
+            return;
+        }
+
+        // Not found - it's a new contact
+        socket.emit('contact-status', {
+            number,
+            jid: targetJid,
+            status: 'not_found'
+        });
+    });
+
     socket.on('add-contact', async (number: string) => {
         console.log(`Request to track: ${number}`);
 
@@ -223,9 +286,25 @@ io.on('connection', (socket) => {
             const result = results?.[0];
 
             if (result?.exists) {
-                // Create session in database
+                // Check if this contact is currently archived and restore it first
+                const archivedSessions = db.getArchivedSessions();
+                const archivedSession = archivedSessions.find(s => s.jid === result.jid);
+                if (archivedSession) {
+                    console.log(`[ARCHIVE] Restoring ${result.jid} from archive before tracking...`);
+                    db.restoreSession(result.jid);
+                    // Notify clients that the contact was restored
+                    io.emit('contact-restored', {
+                        jid: result.jid,
+                        phoneNumber: archivedSession.phone_number,
+                        customName: archivedSession.custom_name,
+                        profilePic: archivedSession.profile_pic_url
+                    });
+                }
+
+                // Create session in database (will reuse stopped session if exists)
                 const session = db.createSession(result.jid, validation.cleaned);
                 sessionIds.set(result.jid, session.id);
+
 
                 const tracker = new WhatsAppTracker(sock, result.jid, false, session.id);
                 trackers.set(result.jid, tracker);

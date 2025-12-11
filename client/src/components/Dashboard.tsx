@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Eye, EyeOff, Disc, Archive, ArrowLeft, RotateCcw, Trash2, History, FileSpreadsheet, FileText } from 'lucide-react';
+import { Eye, EyeOff, Disc, Archive, ArrowLeft, ArrowUp, RotateCcw, Trash2, History, FileSpreadsheet, FileText } from 'lucide-react';
 import { socket } from '../App';
 import { ContactCard } from './ContactCard';
 import { CountrySelector } from './CountrySelector';
@@ -47,6 +47,17 @@ export function Dashboard() {
     const [error, setError] = useState<string | null>(null);
     const [privacyMode, setPrivacyMode] = useState(false);
     const [selectedPrefix, setSelectedPrefix] = useState('+39');
+
+    // Contact status confirmation dialog state
+    const [pendingContact, setPendingContact] = useState<{
+        number: string;
+        jid: string;
+        status: 'active' | 'stopped' | 'archived';
+        contactName?: string;
+        profilePic?: string;
+        archivedAt?: string;
+    } | null>(null);
+
 
     // Request archived contacts from server on mount
     useEffect(() => {
@@ -119,40 +130,48 @@ export function Dashboard() {
         }
 
         function onContactAdded(data: { jid: string, number: string }) {
-            // Remove from archived if exists (for restore case)
-            setArchivedContacts(prev => prev.filter(c => c.jid !== data.jid));
-
             setContacts(prev => {
-                const next = new Map(prev);
-                const existing = next.get(data.jid);
+                const next = new Map<string, ContactInfo>();
+                const existing = prev.get(data.jid);
 
-                // If contact already exists, update it but PRESERVE LOG DATA
-                if (existing) {
-                    next.set(data.jid, {
-                        ...existing,
-                        isStopped: false,
-                        // IMPORTANT: Keep existing data to preserve log history across restarts
-                        // Only clear devices since they'll be re-detected
-                        devices: []
-                    });
-                } else {
-                    // New contact
-                    next.set(data.jid, {
-                        jid: data.jid,
-                        displayNumber: data.number,
-                        contactName: data.number,
-                        data: [],
-                        devices: [],
-                        deviceCount: 0,
-                        presence: null,
-                        profilePic: null,
-                        isStopped: false
-                    });
-                }
+                // Create the contact entry (new or updated)
+                const contactEntry: ContactInfo = existing ? {
+                    ...existing,
+                    isStopped: false,
+                    // IMPORTANT: Keep existing data to preserve log history across restarts
+                    // Only clear devices since they'll be re-detected
+                    devices: []
+                } : {
+                    // Completely new contact (archived info will come from server events)
+                    jid: data.jid,
+                    displayNumber: data.number,
+                    contactName: data.number,
+                    data: [],
+                    devices: [],
+                    deviceCount: 0,
+                    presence: null,
+                    profilePic: null,
+                    isStopped: false
+                };
+
+                // ADD THE NEW/RESTARTED CONTACT FIRST (to put it at the top)
+                next.set(data.jid, contactEntry);
+
+                // Then add all other existing contacts
+                prev.forEach((contact, jid) => {
+                    if (jid !== data.jid) {
+                        next.set(jid, contact);
+                    }
+                });
+
                 return next;
             });
+
+            // Remove from archived list
+            setArchivedContacts(prev => prev.filter(c => c.jid !== data.jid));
             setInputNumber('');
         }
+
 
         function onContactRemoved(jid: string) {
             // Mark as stopped instead of removing
@@ -233,6 +252,39 @@ export function Dashboard() {
             });
         }
 
+        // Handle contact status check response
+        function onContactStatus(data: {
+            number: string;
+            jid?: string;
+            status: 'active' | 'stopped' | 'archived' | 'not_found' | 'invalid';
+            contactName?: string;
+            profilePic?: string;
+            archivedAt?: string;
+            error?: string;
+        }) {
+            if (data.status === 'invalid') {
+                setError(data.error || 'Numero non valido');
+                setTimeout(() => setError(null), 3000);
+                return;
+            }
+
+            if (data.status === 'not_found') {
+                // New contact, proceed directly
+                socket.emit('add-contact', data.number);
+                return;
+            }
+
+            // Contact exists, show confirmation dialog
+            setPendingContact({
+                number: data.number,
+                jid: data.jid!,
+                status: data.status as 'active' | 'stopped' | 'archived',
+                contactName: data.contactName,
+                profilePic: data.profilePic,
+                archivedAt: data.archivedAt
+            });
+        }
+
         socket.on('tracker-update', onTrackerUpdate);
         socket.on('profile-pic', onProfilePic);
         socket.on('contact-name', onContactName);
@@ -244,6 +296,7 @@ export function Dashboard() {
         socket.on('contact-restored', onContactRestored);
         socket.on('contact-deleted', onContactDeleted);
         socket.on('session-logs', onSessionLogs);
+        socket.on('contact-status', onContactStatus);
 
         return () => {
             socket.off('tracker-update', onTrackerUpdate);
@@ -257,14 +310,59 @@ export function Dashboard() {
             socket.off('contact-restored', onContactRestored);
             socket.off('contact-deleted', onContactDeleted);
             socket.off('session-logs', onSessionLogs);
+            socket.off('contact-status', onContactStatus);
         };
     }, []);
 
+    // Check contact status before adding
     const handleAdd = () => {
         if (!inputNumber) return;
         const fullNumber = (selectedPrefix + inputNumber).replace('+', '');
-        socket.emit('add-contact', fullNumber);
+        // First check if contact already exists
+        socket.emit('check-contact-status', fullNumber);
     };
+
+    // Confirm adding an existing contact
+    const handleConfirmAdd = () => {
+        if (pendingContact) {
+            if (pendingContact.status === 'active') {
+                // Just move to top of list locally, don't restart tracking
+                setContacts(prev => {
+                    const next = new Map<string, ContactInfo>();
+                    const existing = prev.get(pendingContact.jid);
+
+                    if (existing) {
+                        // Add this contact first (top of list)
+                        next.set(pendingContact.jid, existing);
+
+                        // Then add all other contacts
+                        prev.forEach((contact, jid) => {
+                            if (jid !== pendingContact.jid) {
+                                next.set(jid, contact);
+                            }
+                        });
+                    } else {
+                        // Shouldn't happen, but return unchanged
+                        return prev;
+                    }
+
+                    return next;
+                });
+            } else {
+                // For stopped/archived, actually restart tracking
+                socket.emit('add-contact', pendingContact.number);
+            }
+            setPendingContact(null);
+            setInputNumber('');
+
+        }
+    };
+
+    // Cancel adding an existing contact
+    const handleCancelAdd = () => {
+        setPendingContact(null);
+    };
+
 
     const handleStop = (jid: string) => {
         // Stop tracking on server
@@ -594,7 +692,100 @@ export function Dashboard() {
                     ))}
                 </div>
             )}
+
+            {/* Pending Contact Confirmation Modal */}
+            {pendingContact && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                    <div className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4 p-6 animate-in fade-in zoom-in-95">
+                        <div className="flex items-center gap-4 mb-4">
+                            {pendingContact.profilePic ? (
+                                <img
+                                    src={pendingContact.profilePic}
+                                    alt="Profile"
+                                    className="w-16 h-16 rounded-full object-cover border-2 border-gray-200"
+                                />
+                            ) : (
+                                <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center text-gray-400 text-2xl border-2 border-gray-200">
+                                    ?
+                                </div>
+                            )}
+                            <div>
+                                <h3 className="text-lg font-bold text-gray-900">
+                                    {pendingContact.contactName || pendingContact.number}
+                                </h3>
+                                <p className="text-sm text-gray-500">+{pendingContact.number}</p>
+                            </div>
+                        </div>
+
+                        <div className={clsx(
+                            "p-4 rounded-lg mb-4",
+                            pendingContact.status === 'active' && "bg-green-50 border border-green-200",
+                            pendingContact.status === 'stopped' && "bg-yellow-50 border border-yellow-200",
+                            pendingContact.status === 'archived' && "bg-amber-50 border border-amber-200"
+                        )}>
+                            {pendingContact.status === 'active' && (
+                                <>
+                                    <p className="font-medium text-green-800 mb-1">
+                                        ⚡ Contatto già in monitoraggio attivo
+                                    </p>
+                                    <p className="text-sm text-green-700">
+                                        Questo numero è attualmente monitorato.
+                                        Vuoi portarlo in cima alla lista?
+                                    </p>
+                                </>
+                            )}
+                            {pendingContact.status === 'stopped' && (
+                                <>
+                                    <p className="font-medium text-yellow-800 mb-1">
+                                        ⏸️ Contatto con tracciamento interrotto
+                                    </p>
+                                    <p className="text-sm text-yellow-700">
+                                        Il monitoraggio di questo numero è stato interrotto.
+                                        Vuoi riavviare il tracciamento e portarlo in cima alla lista?
+                                    </p>
+                                </>
+                            )}
+                            {pendingContact.status === 'archived' && (
+                                <>
+                                    <p className="font-medium text-amber-800 mb-1">
+                                        📦 Contatto in archivio
+                                    </p>
+                                    <p className="text-sm text-amber-700">
+                                        Questo numero è nell'archivio
+                                        {pendingContact.archivedAt && (
+                                            <span> dal {new Date(pendingContact.archivedAt).toLocaleDateString('it-IT', {
+                                                day: '2-digit',
+                                                month: 'short',
+                                                year: 'numeric'
+                                            })}</span>
+                                        )}.
+                                        Vuoi estrarlo dall'archivio e riavviare il tracciamento?
+                                        Lo storico dei log verrà mantenuto.
+                                    </p>
+                                </>
+                            )}
+                        </div>
+
+                        <div className="flex gap-3">
+                            <button
+                                onClick={handleCancelAdd}
+                                className="flex-1 px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition-colors"
+                            >
+                                Annulla
+                            </button>
+                            <button
+                                onClick={handleConfirmAdd}
+                                className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors shadow-sm flex items-center justify-center gap-2"
+                            >
+                                {pendingContact.status === 'active' ? <ArrowUp size={18} /> : <Disc size={18} />}
+                                {pendingContact.status === 'active' ? 'Porta in cima' : pendingContact.status === 'archived' ? 'Estrai e Avvia' : 'Riavvia'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
+
     );
 }
 
