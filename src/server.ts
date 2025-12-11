@@ -113,6 +113,12 @@ const sessionIds: Map<string, number> = new Map(); // JID -> Session ID
 console.log('[SERVER] Initializing database...');
 db.initDatabase();
 
+// Mark any "active" sessions as stopped since server is starting fresh
+// This ensures consistency - if server restarts, tracking wasn't running
+console.log('[SERVER] Cleaning up stale sessions...');
+db.markAllActiveAsStopped();
+
+
 async function connectToWhatsApp() {
     const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
 
@@ -171,6 +177,18 @@ io.on('connection', (socket) => {
         customName: s.custom_name,
         profilePic: s.profile_pic_url,
         archivedAt: s.archived_at,
+        sessionId: s.id
+    })));
+
+    // Send stopped (but not archived) contacts on connect
+    // This ensures contacts that were active before server restart are shown as stopped
+    const stoppedSessions = db.getStoppedSessions();
+    socket.emit('stopped-contacts', stoppedSessions.map(s => ({
+        jid: s.jid,
+        phoneNumber: s.phone_number,
+        customName: s.custom_name,
+        profilePic: s.profile_pic_url,
+        stoppedAt: s.stopped_at,
         sessionId: s.id
     })));
 
@@ -433,6 +451,20 @@ io.on('connection', (socket) => {
         })));
     });
 
+    socket.on('get-stopped', () => {
+        const stoppedSessions = db.getStoppedSessions();
+        console.log(`[SERVER] Sending ${stoppedSessions.length} stopped sessions to client`);
+        socket.emit('stopped-contacts', stoppedSessions.map(s => ({
+            jid: s.jid,
+            phoneNumber: s.phone_number,
+            customName: s.custom_name,
+            profilePic: s.profile_pic_url,
+            stoppedAt: s.stopped_at,
+            sessionId: s.id
+        })));
+    });
+
+
     socket.on('get-session-logs', (data: { jid: string, limit?: number }) => {
         const logs = db.getSessionLogs(data.jid, data.limit || 100);
         socket.emit('session-logs', { jid: data.jid, logs });
@@ -464,7 +496,135 @@ io.on('connection', (socket) => {
         // Notify all clients
         io.emit('database-cleared');
     });
+
+    // ADMIN: Disconnect WhatsApp (delete auth and force re-login)
+    socket.on('admin-disconnect-whatsapp', async () => {
+        console.log('[ADMIN] Request to disconnect WhatsApp');
+
+        const totalTrackers = trackers.size;
+        let stoppedCount = 0;
+
+        // Send initial progress
+        socket.emit('disconnect-progress', {
+            step: 1,
+            message: `Fermando ${totalTrackers} monitoraggi...`,
+            total: totalTrackers,
+            completed: 0
+        });
+
+        // Step 1: Stop all active trackers AND save their state to database
+        console.log(`[ADMIN] Step 1: Stopping ${totalTrackers} trackers and saving state...`);
+        const activeJids = Array.from(trackers.keys());
+
+        for (const jid of activeJids) {
+            const tracker = trackers.get(jid);
+            const sessionId = sessionIds.get(jid);
+
+            if (tracker) {
+                console.log(`[ADMIN] Stopping tracker for ${jid}`);
+                tracker.stopTracking();
+            }
+
+            // Save stop event and mark session as stopped in database
+            // Note: better-sqlite3 operations are SYNCHRONOUS, so they complete immediately
+            if (sessionId) {
+                db.logEvent({
+                    sessionId: sessionId,
+                    jid: jid,
+                    eventType: 'stop'
+                });
+                db.stopSession(jid);
+                stoppedCount++;
+                console.log(`[ADMIN] Session ${jid} marked as stopped in database (${stoppedCount}/${totalTrackers})`);
+
+                // Update progress for each stopped session
+                socket.emit('disconnect-progress', {
+                    step: 1,
+                    message: `Fermato ${stoppedCount}/${totalTrackers} monitoraggi...`,
+                    total: totalTrackers,
+                    completed: stoppedCount
+                });
+            }
+        }
+
+        trackers.clear();
+        sessionIds.clear();
+        console.log('[ADMIN] All trackers stopped and sessions saved');
+
+        // Step 2: Verify database state - count stopped sessions
+        const stoppedSessions = db.getStoppedSessions();
+        console.log(`[ADMIN] Verification: ${stoppedSessions.length} sessions now marked as stopped in database`);
+
+        socket.emit('disconnect-progress', {
+            step: 2,
+            message: `Verificato: ${stoppedSessions.length} sessioni salvate nel database`,
+            total: totalTrackers,
+            completed: stoppedCount
+        });
+
+        // Step 3: Notify clients before disconnecting
+        console.log('[ADMIN] Step 2: Notifying clients...');
+        socket.emit('disconnect-progress', {
+            step: 3,
+            message: 'Disconnessione da WhatsApp...',
+            total: totalTrackers,
+            completed: stoppedCount
+        });
+
+        // Step 4: Close WhatsApp socket connection
+        console.log('[ADMIN] Step 3: Logging out from WhatsApp...');
+        try {
+            if (sock) {
+                await sock.logout();
+                console.log('[ADMIN] WhatsApp session logged out');
+            }
+        } catch (err) {
+            console.log('[ADMIN] Logout failed, proceeding with folder deletion');
+        }
+
+        // Step 5: Delete auth_info_baileys folder
+        socket.emit('disconnect-progress', {
+            step: 4,
+            message: 'Eliminazione dati di autenticazione...',
+            total: totalTrackers,
+            completed: stoppedCount
+        });
+
+        console.log('[ADMIN] Step 4: Deleting auth folder...');
+        const authDir = path.join(process.cwd(), 'auth_info_baileys');
+        if (fs.existsSync(authDir)) {
+            try {
+                fs.rmSync(authDir, { recursive: true, force: true });
+                console.log('[ADMIN] auth_info_baileys folder deleted');
+            } catch (err) {
+                console.error('[ADMIN] Failed to delete auth folder:', err);
+            }
+        }
+
+        console.log('[ADMIN] WhatsApp disconnected successfully');
+
+        // Step 6: Final notification and restart
+        socket.emit('disconnect-progress', {
+            step: 5,
+            message: 'Riavvio server in corso...',
+            total: totalTrackers,
+            completed: stoppedCount,
+            done: true
+        });
+
+        // Notify all clients to show QR code page
+        io.emit('whatsapp-disconnected');
+
+        // Exit process to trigger restart
+        console.log('[ADMIN] Step 5: Restarting server now...');
+        setTimeout(() => {
+            process.exit(0);
+        }, 1000);
+    });
 });
+
+
+
 
 
 // Graceful shutdown

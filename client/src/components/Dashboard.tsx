@@ -59,10 +59,12 @@ export function Dashboard() {
     } | null>(null);
 
 
-    // Request archived contacts from server on mount
+    // Request archived and stopped contacts from server on mount
     useEffect(() => {
         socket.emit('get-archived');
+        socket.emit('get-stopped');
     }, []);
+
 
     useEffect(() => {
         function onTrackerUpdate(update: any) {
@@ -285,6 +287,38 @@ export function Dashboard() {
             });
         }
 
+        // Handle stopped contacts sent on connection (from server restart or previous stopped sessions)
+        function onStoppedContacts(data: any[]) {
+            setContacts(prev => {
+                const next = new Map(prev);
+                data.forEach(s => {
+                    // Only add if not already in the map (active ones take priority)
+                    if (!next.has(s.jid)) {
+                        next.set(s.jid, {
+                            jid: s.jid,
+                            displayNumber: s.phoneNumber,
+                            contactName: s.customName || s.phoneNumber,
+                            data: [],
+                            devices: [],
+                            deviceCount: 0,
+                            presence: null,
+                            profilePic: s.profilePic,
+                            isStopped: true,
+                            sessionId: s.sessionId
+                        });
+                    }
+                });
+                return next;
+            });
+        }
+
+        // Handle database cleared event from admin panel
+        function onDatabaseCleared() {
+            setContacts(new Map());
+            setArchivedContacts([]);
+            setArchiveLogs(new Map());
+        }
+
         socket.on('tracker-update', onTrackerUpdate);
         socket.on('profile-pic', onProfilePic);
         socket.on('contact-name', onContactName);
@@ -297,6 +331,8 @@ export function Dashboard() {
         socket.on('contact-deleted', onContactDeleted);
         socket.on('session-logs', onSessionLogs);
         socket.on('contact-status', onContactStatus);
+        socket.on('stopped-contacts', onStoppedContacts);
+        socket.on('database-cleared', onDatabaseCleared);
 
         return () => {
             socket.off('tracker-update', onTrackerUpdate);
@@ -311,8 +347,12 @@ export function Dashboard() {
             socket.off('contact-deleted', onContactDeleted);
             socket.off('session-logs', onSessionLogs);
             socket.off('contact-status', onContactStatus);
+            socket.off('stopped-contacts', onStoppedContacts);
+            socket.off('database-cleared', onDatabaseCleared);
+
         };
     }, []);
+
 
     // Check contact status before adding
     const handleAdd = () => {

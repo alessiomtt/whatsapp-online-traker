@@ -330,6 +330,36 @@ export function getArchivedSessions(): Session[] {
 }
 
 /**
+ * Get all stopped (but not archived) sessions
+ */
+export function getStoppedSessions(): Session[] {
+    const database = getDatabase();
+    return database.prepare(`
+        SELECT * FROM sessions WHERE is_active = 0 AND is_archived = 0 ORDER BY stopped_at DESC
+    `).all() as Session[];
+}
+
+/**
+ * Mark all active sessions as stopped (used on server restart)
+ * This ensures consistency - if server restarts, we can't guarantee tracking was running
+ */
+export function markAllActiveAsStopped(): number {
+    const database = getDatabase();
+    const result = database.prepare(`
+        UPDATE sessions 
+        SET is_active = 0, stopped_at = CURRENT_TIMESTAMP 
+        WHERE is_active = 1
+    `).run();
+
+    if (result.changes > 0) {
+        console.log(`[DATABASE] Marked ${result.changes} active sessions as stopped on server restart`);
+    }
+
+    return result.changes;
+}
+
+
+/**
  * Get session by JID
  */
 export function getSessionByJid(jid: string): Session | undefined {

@@ -3,7 +3,7 @@ import { io, Socket } from 'socket.io-client';
 import { Login } from './components/Login';
 import { Dashboard } from './components/Dashboard';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { ArrowLeft, Lock, AlertCircle, Shield, Trash2 } from 'lucide-react';
+import { ArrowLeft, Lock, AlertCircle, Shield, Trash2, LogOut } from 'lucide-react';
 
 export const socket: Socket = io('http://localhost:3001');
 
@@ -119,6 +119,47 @@ function App() {
         socket.on('database-cleared', onDbCleared);
     };
 
+    // Admin: Disconnect WhatsApp
+    const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false);
+    const [isDisconnecting, setIsDisconnecting] = useState(false);
+    const [disconnectProgress, setDisconnectProgress] = useState<{
+        step: number;
+        message: string;
+        total: number;
+        completed: number;
+        done?: boolean;
+    } | null>(null);
+
+    const handleDisconnectWhatsApp = () => {
+        setShowDisconnectConfirm(true);
+        setDisconnectProgress(null);
+    };
+
+    const confirmDisconnectWhatsApp = () => {
+        setIsDisconnecting(true);
+        socket.emit('admin-disconnect-whatsapp');
+
+        // Listen for progress updates
+        const onProgress = (data: any) => {
+            setDisconnectProgress(data);
+        };
+        socket.on('disconnect-progress', onProgress);
+
+        // Listen for disconnection - server will restart
+        const onDisconnected = () => {
+            // Reset all state
+            setIsDisconnecting(false);
+            setShowDisconnectConfirm(false);
+            setShowAdminPanel(false);
+            setIsWhatsAppReady(false);
+            setDisconnectProgress(null);
+            socket.off('whatsapp-disconnected', onDisconnected);
+            socket.off('disconnect-progress', onProgress);
+        };
+        socket.on('whatsapp-disconnected', onDisconnected);
+    };
+
+
     // Admin Panel Component
     const AdminPanel = () => (
         <div className="space-y-6">
@@ -172,6 +213,32 @@ function App() {
                     </div>
                 </div>
             </div>
+
+            {/* WhatsApp Connection Section */}
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                <div className="px-6 py-4 border-b border-gray-100 bg-gray-50">
+                    <h3 className="text-lg font-semibold text-gray-800">📱 Connessione WhatsApp</h3>
+                </div>
+                <div className="p-6">
+                    <div className="flex items-start gap-4">
+                        <div className="flex-1">
+                            <h4 className="font-medium text-gray-900 mb-1">Disconnetti WhatsApp</h4>
+                            <p className="text-sm text-gray-500">
+                                Effettua il logout dalla sessione WhatsApp corrente ed elimina i dati di autenticazione.
+                                Dovrai scansionare nuovamente il QR code per riconnetterti.
+                            </p>
+                        </div>
+                        <button
+                            onClick={handleDisconnectWhatsApp}
+                            className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg font-medium transition-colors flex items-center gap-2 flex-shrink-0"
+                        >
+                            <LogOut size={18} />
+                            Disconnetti
+                        </button>
+                    </div>
+                </div>
+            </div>
+
 
             {/* Clear Database Confirmation Modal */}
             {showClearDbConfirm && (
@@ -234,8 +301,96 @@ function App() {
                     </div>
                 </div>
             )}
+
+            {/* Disconnect WhatsApp Confirmation Modal */}
+            {showDisconnectConfirm && (
+                <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm">
+                    <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 p-6 animate-in fade-in zoom-in-95">
+                        <div className="w-16 h-16 rounded-full bg-orange-100 flex items-center justify-center mx-auto mb-4">
+                            <LogOut size={32} className="text-orange-600" />
+                        </div>
+
+                        <h3 className="text-xl font-bold text-gray-900 text-center mb-2">
+                            {isDisconnecting ? 'Disconnessione in corso...' : 'Conferma Disconnessione'}
+                        </h3>
+
+                        {!isDisconnecting ? (
+                            <>
+                                <p className="text-gray-500 text-center text-sm mb-4">
+                                    Stai per disconnettere la sessione WhatsApp corrente.
+                                </p>
+                                <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 mb-6">
+                                    <p className="text-sm text-orange-800">
+                                        <strong>Nota:</strong> Il server verrà riavviato automaticamente
+                                        e dovrai scansionare nuovamente il QR code per riconnetterti.
+                                    </p>
+                                </div>
+                            </>
+                        ) : (
+                            <div className="space-y-4 mb-6">
+                                {/* Progress message */}
+                                <p className="text-gray-600 text-center text-sm">
+                                    {disconnectProgress?.message || 'Preparazione...'}
+                                </p>
+
+                                {/* Progress bar */}
+                                {disconnectProgress && disconnectProgress.total > 0 && (
+                                    <div className="w-full bg-gray-200 rounded-full h-2.5">
+                                        <div
+                                            className="bg-orange-600 h-2.5 rounded-full transition-all duration-300"
+                                            style={{ width: `${(disconnectProgress.completed / disconnectProgress.total) * 100}%` }}
+                                        ></div>
+                                    </div>
+                                )}
+
+                                {/* Step indicator */}
+                                <div className="flex justify-center gap-2">
+                                    {[1, 2, 3, 4, 5].map(step => (
+                                        <div
+                                            key={step}
+                                            className={`w-2 h-2 rounded-full transition-colors ${disconnectProgress && disconnectProgress.step >= step
+                                                    ? 'bg-orange-600'
+                                                    : 'bg-gray-300'
+                                                }`}
+                                        />
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => setShowDisconnectConfirm(false)}
+                                disabled={isDisconnecting}
+                                className="flex-1 px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition-colors disabled:opacity-50"
+                            >
+                                Annulla
+                            </button>
+                            <button
+                                onClick={confirmDisconnectWhatsApp}
+                                disabled={isDisconnecting}
+                                className="flex-1 px-4 py-2.5 bg-orange-600 text-white rounded-lg font-medium hover:bg-orange-700 transition-colors shadow-sm disabled:opacity-50 flex items-center justify-center gap-2"
+                            >
+                                {isDisconnecting ? (
+                                    <>
+                                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                        In corso...
+                                    </>
+                                ) : (
+                                    <>
+                                        <LogOut size={18} />
+                                        Disconnetti
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
         </div>
     );
+
 
 
     return (
