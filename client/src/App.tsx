@@ -4,6 +4,7 @@ import { Login } from './components/Login';
 import { Dashboard } from './components/Dashboard';
 import { ComparePage } from './components/ComparePage';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { DatabaseUtilities } from './components/DatabaseUtilities';
 import { ArrowLeft, Lock, AlertCircle, Shield, Trash2, LogOut, Eye, EyeOff, Settings, RotateCcw } from 'lucide-react';
 
 export const socket: Socket = io('http://localhost:3001');
@@ -466,6 +467,9 @@ function App() {
                     )}
                 </div>
             </div>
+
+            {/* Database Utilities Section */}
+            <DatabaseUtilities />
 
 
             {/* Clear Database Confirmation Modal */}

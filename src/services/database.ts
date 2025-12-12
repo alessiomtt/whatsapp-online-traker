@@ -544,3 +544,287 @@ export function closeDatabase(): void {
     }
 }
 
+// ============================================
+// DATABASE UTILITIES FOR ADMIN PANEL
+// ============================================
+
+export interface DbStats {
+    fileSizeBytes: number;
+    fileSizeMB: string;
+    totalSessions: number;
+    activeSessions: number;
+    stoppedSessions: number;
+    archivedSessions: number;
+    totalEvents: number;
+    oldestEvent: string | null;
+    newestEvent: string | null;
+    lastModified: string;
+}
+
+/**
+ * Get database statistics
+ */
+export function getDbStats(): DbStats {
+    const database = getDatabase();
+    const dataDir = path.join(process.cwd(), 'data');
+    const dbPath = path.join(dataDir, 'tracker.db');
+
+    // File stats
+    let fileSizeBytes = 0;
+    let lastModified = new Date().toISOString();
+    try {
+        const stats = fs.statSync(dbPath);
+        fileSizeBytes = stats.size;
+        lastModified = stats.mtime.toISOString();
+    } catch { /* ignore */ }
+
+    // Session counts
+    const totalSessions = (database.prepare('SELECT COUNT(*) as count FROM sessions').get() as any).count;
+    const activeSessions = (database.prepare('SELECT COUNT(*) as count FROM sessions WHERE is_active = 1').get() as any).count;
+    const archivedSessions = (database.prepare('SELECT COUNT(*) as count FROM sessions WHERE is_archived = 1').get() as any).count;
+    const stoppedSessions = (database.prepare('SELECT COUNT(*) as count FROM sessions WHERE is_active = 0 AND is_archived = 0').get() as any).count;
+
+    // Events count
+    const totalEvents = (database.prepare('SELECT COUNT(*) as count FROM activity_logs').get() as any).count;
+
+    // Event date range
+    const oldestEvent = (database.prepare('SELECT MIN(timestamp) as ts FROM activity_logs').get() as any)?.ts || null;
+    const newestEvent = (database.prepare('SELECT MAX(timestamp) as ts FROM activity_logs').get() as any)?.ts || null;
+
+    return {
+        fileSizeBytes,
+        fileSizeMB: (fileSizeBytes / (1024 * 1024)).toFixed(2),
+        totalSessions,
+        activeSessions,
+        stoppedSessions,
+        archivedSessions,
+        totalEvents,
+        oldestEvent,
+        newestEvent,
+        lastModified
+    };
+}
+
+/**
+ * Get all sessions for overview (active, stopped, archived)
+ */
+export function getAllSessionsOverview(): Session[] {
+    const database = getDatabase();
+    return database.prepare(`
+        SELECT * FROM sessions 
+        ORDER BY 
+            is_active DESC,
+            is_archived ASC,
+            started_at DESC
+    `).all() as Session[];
+}
+
+/**
+ * Purge old activity logs (older than specified days)
+ * Returns number of deleted rows
+ */
+export function purgeOldLogs(days: number): number {
+    const database = getDatabase();
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - days);
+    const cutoffStr = cutoffDate.toISOString();
+
+    const result = database.prepare(`
+        DELETE FROM activity_logs WHERE timestamp < ?
+    `).run(cutoffStr);
+
+    // Vacuum to reclaim space
+    database.exec('VACUUM');
+
+    console.log(`[DATABASE] Purged ${result.changes} logs older than ${days} days`);
+    return result.changes;
+}
+
+/**
+ * Clear all activity logs (keeps sessions)
+ * Returns number of deleted rows
+ */
+export function clearAllLogs(): number {
+    const database = getDatabase();
+    const result = database.prepare('DELETE FROM activity_logs').run();
+    database.exec('VACUUM');
+    console.log(`[DATABASE] Cleared all ${result.changes} activity logs`);
+    return result.changes;
+}
+
+/**
+ * Execute a raw SQL query (SELECT only for safety)
+ * Returns query results or error message
+ */
+export function executeRawQuery(sql: string): { success: boolean; data?: any[]; error?: string; rowCount?: number } {
+    const database = getDatabase();
+
+    // Sanitize: only allow SELECT statements
+    const trimmedSql = sql.trim().toUpperCase();
+    if (!trimmedSql.startsWith('SELECT')) {
+        return { success: false, error: 'Solo query SELECT sono permesse per sicurezza' };
+    }
+
+    // Block dangerous keywords even in SELECT
+    const dangerousKeywords = ['DROP', 'DELETE', 'INSERT', 'UPDATE', 'ALTER', 'CREATE', 'TRUNCATE', 'REPLACE'];
+    for (const keyword of dangerousKeywords) {
+        if (trimmedSql.includes(keyword)) {
+            return { success: false, error: `Keyword "${keyword}" non permesso nelle query` };
+        }
+    }
+
+    try {
+        const results = database.prepare(sql).all();
+        return { success: true, data: results, rowCount: results.length };
+    } catch (err: any) {
+        return { success: false, error: err.message };
+    }
+}
+
+export interface TableSchema {
+    tableName: string;
+    columns: { name: string; type: string; notnull: number; pk: number }[];
+}
+
+/**
+ * Get database table schema
+ */
+export function getTableSchema(): TableSchema[] {
+    const database = getDatabase();
+    const tables = database.prepare(`
+        SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'
+    `).all() as { name: string }[];
+
+    return tables.map(table => {
+        const columns = database.prepare(`PRAGMA table_info(${table.name})`).all() as any[];
+        return {
+            tableName: table.name,
+            columns: columns.map(col => ({
+                name: col.name,
+                type: col.type,
+                notnull: col.notnull,
+                pk: col.pk
+            }))
+        };
+    });
+}
+
+export interface EventsFilter {
+    jid?: string;
+    eventType?: string;
+    startDate?: string;
+    endDate?: string;
+    limit?: number;
+    offset?: number;
+}
+
+export interface EventsBrowserResult {
+    events: ActivityLog[];
+    totalCount: number;
+    page: number;
+    totalPages: number;
+}
+
+/**
+ * Browse activity events with filters and pagination
+ */
+export function getEventsWithFilters(filters: EventsFilter): EventsBrowserResult {
+    const database = getDatabase();
+    const limit = filters.limit || 50;
+    const offset = filters.offset || 0;
+
+    let whereClause = '1=1';
+    const params: any[] = [];
+
+    if (filters.jid) {
+        whereClause += ' AND al.jid = ?';
+        params.push(filters.jid);
+    }
+
+    if (filters.eventType) {
+        whereClause += ' AND al.event_type = ?';
+        params.push(filters.eventType);
+    }
+
+    if (filters.startDate) {
+        whereClause += ' AND al.timestamp >= ?';
+        params.push(filters.startDate);
+    }
+
+    if (filters.endDate) {
+        whereClause += ' AND al.timestamp <= ?';
+        params.push(filters.endDate);
+    }
+
+    // Get total count
+    const countQuery = `SELECT COUNT(*) as count FROM activity_logs al WHERE ${whereClause}`;
+    const totalCount = (database.prepare(countQuery).get(...params) as any).count;
+
+    // Get paginated results
+    const dataQuery = `
+        SELECT al.* FROM activity_logs al 
+        WHERE ${whereClause}
+        ORDER BY al.timestamp DESC
+        LIMIT ? OFFSET ?
+    `;
+    const events = database.prepare(dataQuery).all(...params, limit, offset) as ActivityLog[];
+
+    return {
+        events,
+        totalCount,
+        page: Math.floor(offset / limit) + 1,
+        totalPages: Math.ceil(totalCount / limit)
+    };
+}
+
+/**
+ * Get list of unique event types in the database
+ */
+export function getEventTypes(): string[] {
+    const database = getDatabase();
+    const result = database.prepare(`
+        SELECT DISTINCT event_type FROM activity_logs ORDER BY event_type
+    `).all() as { event_type: string }[];
+    return result.map(r => r.event_type);
+}
+
+/**
+ * Get database file path for export
+ */
+export function getDatabasePath(): string {
+    const dataDir = path.join(process.cwd(), 'data');
+    return path.join(dataDir, 'tracker.db');
+}
+
+/**
+ * Import database from buffer (overwrites existing)
+ * WARNING: This is destructive and stops all trackers
+ */
+export function importDatabase(buffer: Buffer): { success: boolean; error?: string } {
+    try {
+        // Close current connection
+        closeDatabase();
+
+        const dataDir = path.join(process.cwd(), 'data');
+        const dbPath = path.join(dataDir, 'tracker.db');
+
+        // Backup existing
+        const backupPath = path.join(dataDir, `tracker_backup_${Date.now()}.db`);
+        if (fs.existsSync(dbPath)) {
+            fs.copyFileSync(dbPath, backupPath);
+        }
+
+        // Write new database
+        fs.writeFileSync(dbPath, buffer);
+
+        // Reinitialize
+        initDatabase();
+
+        console.log('[DATABASE] Imported new database successfully');
+        return { success: true };
+    } catch (err: any) {
+        console.error('[DATABASE] Import failed:', err);
+        return { success: false, error: err.message };
+    }
+}
+

@@ -788,6 +788,127 @@ io.on('connection', (socket) => {
         }
     });
 
+    // ============================================
+    // DATABASE UTILITIES SOCKET EVENTS
+    // ============================================
+
+    // ADMIN: Get database statistics
+    socket.on('admin-db-stats', () => {
+        console.log('[ADMIN] Request for database stats');
+        const stats = db.getDbStats();
+        socket.emit('db-stats', stats);
+    });
+
+    // ADMIN: Get all sessions overview
+    socket.on('admin-sessions-overview', () => {
+        console.log('[ADMIN] Request for sessions overview');
+        const sessions = db.getAllSessionsOverview();
+        socket.emit('sessions-overview', sessions);
+    });
+
+    // ADMIN: Purge old logs
+    socket.on('admin-purge-logs', (data: { days: number }) => {
+        console.log(`[ADMIN] Request to purge logs older than ${data.days} days`);
+        const deleted = db.purgeOldLogs(data.days);
+        socket.emit('purge-logs-result', { success: true, deleted });
+        // Refresh stats
+        socket.emit('db-stats', db.getDbStats());
+    });
+
+    // ADMIN: Delete single session
+    socket.on('admin-delete-session', (data: { jid: string }) => {
+        console.log(`[ADMIN] Request to delete session: ${data.jid}`);
+
+        // Stop tracker if running
+        const tracker = trackers.get(data.jid);
+        if (tracker) {
+            tracker.stopTracking();
+            trackers.delete(data.jid);
+            sessionIds.delete(data.jid);
+            io.emit('tracker-stopped', { jid: data.jid });
+        }
+
+        db.deleteSession(data.jid);
+        socket.emit('delete-session-result', { success: true, jid: data.jid });
+        // Refresh sessions overview
+        socket.emit('sessions-overview', db.getAllSessionsOverview());
+        socket.emit('db-stats', db.getDbStats());
+    });
+
+    // ADMIN: Clear all logs (keeps sessions)
+    socket.on('admin-clear-logs', () => {
+        console.log('[ADMIN] Request to clear all logs');
+        const deleted = db.clearAllLogs();
+        socket.emit('clear-logs-result', { success: true, deleted });
+        socket.emit('db-stats', db.getDbStats());
+    });
+
+    // ADMIN: Execute raw query
+    socket.on('admin-raw-query', (data: { sql: string }) => {
+        console.log(`[ADMIN] Raw query: ${data.sql.substring(0, 100)}...`);
+        const result = db.executeRawQuery(data.sql);
+        socket.emit('raw-query-result', result);
+    });
+
+    // ADMIN: Get table schema
+    socket.on('admin-table-schema', () => {
+        console.log('[ADMIN] Request for table schema');
+        const schema = db.getTableSchema();
+        socket.emit('table-schema', schema);
+    });
+
+    // ADMIN: Events browser with filters
+    socket.on('admin-events-browser', (filters: db.EventsFilter) => {
+        console.log('[ADMIN] Events browser request:', filters);
+        const result = db.getEventsWithFilters(filters);
+        const eventTypes = db.getEventTypes();
+        const sessions = db.getAllSessionsOverview();
+        socket.emit('events-browser-result', {
+            ...result,
+            eventTypes,
+            sessions: sessions.map(s => ({ jid: s.jid, name: s.custom_name || s.phone_number }))
+        });
+    });
+
+    // ADMIN: Export database
+    socket.on('admin-export-db', () => {
+        console.log('[ADMIN] Request to export database');
+        const dbPath = db.getDatabasePath();
+        try {
+            const buffer = fs.readFileSync(dbPath);
+            socket.emit('export-db-result', {
+                success: true,
+                data: buffer.toString('base64'),
+                filename: `tracker_backup_${new Date().toISOString().split('T')[0]}.db`
+            });
+        } catch (err: any) {
+            socket.emit('export-db-result', { success: false, error: err.message });
+        }
+    });
+
+    // ADMIN: Import database
+    socket.on('admin-import-db', (data: { base64Data: string }) => {
+        console.log('[ADMIN] Request to import database');
+
+        // Stop all trackers first
+        for (const [jid, tracker] of trackers) {
+            tracker.stopTracking();
+            io.emit('tracker-stopped', { jid });
+        }
+        trackers.clear();
+        sessionIds.clear();
+
+        const buffer = Buffer.from(data.base64Data, 'base64');
+        const result = db.importDatabase(buffer);
+        socket.emit('import-db-result', result);
+
+        if (result.success) {
+            // Refresh all data
+            socket.emit('db-stats', db.getDbStats());
+            socket.emit('sessions-overview', db.getAllSessionsOverview());
+        }
+    });
+
     // ADMIN: Disconnect WhatsApp (delete auth and force re-login)
     socket.on('admin-disconnect-whatsapp', async () => {
         console.log('[ADMIN] Request to disconnect WhatsApp');
