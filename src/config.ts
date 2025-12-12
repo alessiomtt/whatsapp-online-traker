@@ -36,6 +36,11 @@ export interface EditableConfig {
     probeIntervalDefault: number;
     offlineThreshold: number;
     thresholdMultiplier: number;
+    // Calibration settings
+    calibrationProbeCount: number;  // Number of probes for calibration (default 5)
+    warmupEnabled: boolean;         // Skip first N probes
+    warmupProbeCount: number;       // Number of probes to skip (default 2)
+    outlierFilterEnabled: boolean;  // Filter outliers > 3x median during calibration
 }
 
 // Path to custom config file
@@ -73,7 +78,11 @@ export function getDefaultEditableConfig(): EditableConfig {
     return {
         probeIntervalDefault: defaultConfig.probeInterval.default,
         offlineThreshold: defaultConfig.offlineThreshold,
-        thresholdMultiplier: defaultConfig.thresholdMultiplier
+        thresholdMultiplier: defaultConfig.thresholdMultiplier,
+        calibrationProbeCount: 5,
+        warmupEnabled: false,
+        warmupProbeCount: 2,
+        outlierFilterEnabled: false
     };
 }
 
@@ -85,7 +94,6 @@ function loadCustomConfig(): Partial<EditableConfig> | null {
         if (fs.existsSync(CUSTOM_CONFIG_PATH)) {
             const data = fs.readFileSync(CUSTOM_CONFIG_PATH, 'utf-8');
             const parsed = JSON.parse(data);
-            console.log('[CONFIG] Loaded custom config from', CUSTOM_CONFIG_PATH);
             return parsed;
         }
     } catch (err) {
@@ -148,7 +156,11 @@ export function getCurrentEditableConfig(): EditableConfig {
         return {
             probeIntervalDefault: custom.probeIntervalDefault ?? defaults.probeIntervalDefault,
             offlineThreshold: custom.offlineThreshold ?? defaults.offlineThreshold,
-            thresholdMultiplier: custom.thresholdMultiplier ?? defaults.thresholdMultiplier
+            thresholdMultiplier: custom.thresholdMultiplier ?? defaults.thresholdMultiplier,
+            calibrationProbeCount: custom.calibrationProbeCount ?? defaults.calibrationProbeCount,
+            warmupEnabled: custom.warmupEnabled ?? defaults.warmupEnabled,
+            warmupProbeCount: custom.warmupProbeCount ?? defaults.warmupProbeCount,
+            outlierFilterEnabled: custom.outlierFilterEnabled ?? defaults.outlierFilterEnabled
         };
     }
 

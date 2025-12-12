@@ -681,13 +681,23 @@ export class WhatsAppTracker {
         const globalMedian = this.rttAnalyzer.getCachedMedian() || this.rttAnalyzer.calculateMedian();
         const globalThreshold = this.rttAnalyzer.getCachedThreshold() || this.rttAnalyzer.calculateThreshold();
 
+        // Get calibration progress for the first device (main contact)
+        const firstDevice = devices[0];
+        let calibrationProgress: { current: number; total: number; warmupRemaining?: number } | undefined;
+        if (firstDevice && firstDevice.state === 'Calibrating...') {
+            const analysis = this.rttAnalyzer.determineState([], 0, 'Calibrating...');
+            calibrationProgress = analysis.calibrationProgress;
+        }
+
         const data = {
             devices,
             deviceCount: this.trackedJids.size,
             presence: this.lastPresence,
             // Global stats for charts
             median: globalMedian,
-            threshold: globalThreshold
+            threshold: globalThreshold,
+            // Calibration progress
+            calibrationProgress
         };
 
         if (this.onUpdate) {

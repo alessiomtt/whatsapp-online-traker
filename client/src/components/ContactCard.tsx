@@ -36,6 +36,11 @@ interface ContactCardProps {
     privacyMode?: boolean;
     onRename?: (jid: string, newName: string) => void;
     probeMethod?: 'reaction' | 'delete';
+    calibrationProgress?: {
+        current: number;
+        total: number;
+        warmupRemaining?: number;
+    };
 }
 
 // Interface for DB activity events
@@ -62,7 +67,8 @@ export function ContactCard({
     onArchive,
     privacyMode = false,
     onRename,
-    probeMethod = 'reaction'
+    probeMethod = 'reaction',
+    calibrationProgress
 }: ContactCardProps) {
     const lastData = data[data.length - 1];
     const currentStatus = devices.length > 0
@@ -464,12 +470,18 @@ export function ContactCard({
                                     )}
                                     {/* Status badge - only show when collapsed AND not stopped */}
                                     {isCollapsed && !isStopped && (
-                                        <span className={clsx(
-                                            "px-2.5 py-1 rounded-full text-xs font-medium",
-                                            getStatusColor(currentStatus)
-                                        )}>
-                                            {currentStatus}
-                                        </span>
+                                        calibrationProgress ? (
+                                            <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                                {calibrationProgress.current}/{calibrationProgress.total}
+                                            </span>
+                                        ) : (
+                                            <span className={clsx(
+                                                "px-2.5 py-1 rounded-full text-xs font-medium",
+                                                getStatusColor(currentStatus)
+                                            )}>
+                                                {currentStatus}
+                                            </span>
+                                        )
                                     )}
                                 </div>
                             )}
@@ -870,12 +882,47 @@ export function ContactCard({
                                 </div>
 
                                 <div className="flex items-center gap-2 mb-4">
-                                    <span className={clsx(
-                                        "px-3 py-1 rounded-full text-sm font-medium",
-                                        getStatusColor(currentStatus)
-                                    )}>
-                                        {currentStatus}
-                                    </span>
+                                    {calibrationProgress ? (
+                                        <div className="flex flex-col gap-2 w-full">
+                                            {/* Phase indicator badge */}
+                                            <div className="flex items-center gap-2">
+                                                {calibrationProgress.warmupRemaining && calibrationProgress.warmupRemaining > 0 ? (
+                                                    <span className="px-3 py-1.5 rounded-full text-sm font-medium bg-purple-100 text-purple-800 animate-pulse flex items-center gap-1.5">
+                                                        <span className="w-2 h-2 rounded-full bg-purple-500 animate-ping"></span>
+                                                        🔥 Warmup {calibrationProgress.warmupRemaining} restanti
+                                                    </span>
+                                                ) : (
+                                                    <span className="px-3 py-1.5 rounded-full text-sm font-medium bg-blue-100 text-blue-800 flex items-center gap-1.5">
+                                                        <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>
+                                                        📊 Calibrazione {calibrationProgress.current}/{calibrationProgress.total}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            {/* Progress bar */}
+                                            <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                                                <div
+                                                    className={clsx(
+                                                        "h-full rounded-full transition-all duration-300",
+                                                        calibrationProgress.warmupRemaining && calibrationProgress.warmupRemaining > 0
+                                                            ? "bg-purple-500"
+                                                            : "bg-blue-500"
+                                                    )}
+                                                    style={{
+                                                        width: calibrationProgress.warmupRemaining && calibrationProgress.warmupRemaining > 0
+                                                            ? '10%'  // Show minimal progress during warmup
+                                                            : `${(calibrationProgress.current / calibrationProgress.total) * 100}%`
+                                                    }}
+                                                />
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <span className={clsx(
+                                            "px-3 py-1 rounded-full text-sm font-medium",
+                                            getStatusColor(currentStatus)
+                                        )}>
+                                            {currentStatus}
+                                        </span>
+                                    )}
                                 </div>
 
                                 <div className="mb-4">
@@ -952,7 +999,14 @@ export function ContactCard({
                                 </div>
 
                                 {/* Chart - flex-1 to fill remaining height */}
-                                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 flex-1 min-h-[250px] flex flex-col">
+                                <div className={clsx(
+                                    "p-6 rounded-xl shadow-sm border flex-1 min-h-[250px] flex flex-col transition-all duration-500",
+                                    calibrationProgress
+                                        ? calibrationProgress.warmupRemaining && calibrationProgress.warmupRemaining > 0
+                                            ? "bg-purple-50 border-purple-200"
+                                            : "bg-blue-50 border-blue-200"
+                                        : "bg-white border-gray-200"
+                                )}>
                                     <div className="flex items-center justify-between mb-2">
                                         <div className="flex items-center gap-2">
                                             <h5 className="text-sm font-medium text-gray-500">RTT History & Threshold</h5>

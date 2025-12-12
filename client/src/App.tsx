@@ -168,6 +168,10 @@ function App() {
         probeIntervalDefault: number;
         offlineThreshold: number;
         thresholdMultiplier: number;
+        calibrationProbeCount: number;
+        warmupEnabled: boolean;
+        warmupProbeCount: number;
+        outlierFilterEnabled: boolean;
     }
 
     const [configData, setConfigData] = useState<{
@@ -178,7 +182,11 @@ function App() {
     const [configForm, setConfigForm] = useState<EditableConfig>({
         probeIntervalDefault: 2000,
         offlineThreshold: 10000,
-        thresholdMultiplier: 0.9
+        thresholdMultiplier: 0.9,
+        calibrationProbeCount: 5,
+        warmupEnabled: false,
+        warmupProbeCount: 2,
+        outlierFilterEnabled: false
     });
     const [configLoading, setConfigLoading] = useState(false);
     const [configSaving, setConfigSaving] = useState(false);
@@ -435,7 +443,90 @@ function App() {
                                 </p>
                             </div>
 
-                            {/* Buttons */}
+                            {/* Calibration Settings Section */}
+                            <div className="border-t border-gray-200 pt-4 mt-4">
+                                <h4 className="text-sm font-semibold text-gray-800 mb-3">Impostazioni Calibrazione</h4>
+
+                                {/* Calibration Probe Count */}
+                                <div className="space-y-2 mb-4">
+                                    <label className="block">
+                                        <span className="text-sm font-medium text-gray-700">Numero Probe Calibrazione</span>
+                                        <input
+                                            type="number"
+                                            value={configForm.calibrationProbeCount}
+                                            onChange={(e) => setConfigForm({ ...configForm, calibrationProbeCount: parseInt(e.target.value) || 5 })}
+                                            className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                            min={3}
+                                            max={20}
+                                        />
+                                    </label>
+                                    <p className="text-xs text-gray-500">
+                                        Numero di misurazioni RTT necessarie per completare la calibrazione.
+                                        <br />
+                                        <span className="font-medium">Range: 3-20</span> |
+                                        <span className="text-blue-600"> Default: 5</span>
+                                    </p>
+                                </div>
+
+                                {/* Warmup Toggle */}
+                                <div className="flex items-center justify-between mb-4 p-3 bg-gray-50 rounded-lg">
+                                    <div>
+                                        <span className="text-sm font-medium text-gray-700">Warmup (scarta primi probe)</span>
+                                        <p className="text-xs text-gray-500 mt-1">
+                                            Ignora i primi N probe per evitare valori instabili al cold start.
+                                        </p>
+                                    </div>
+                                    <label className="relative inline-flex items-center cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={configForm.warmupEnabled}
+                                            onChange={(e) => setConfigForm({ ...configForm, warmupEnabled: e.target.checked })}
+                                            className="sr-only peer"
+                                        />
+                                        <div className="w-11 h-6 bg-gray-300 peer-focus:ring-2 peer-focus:ring-blue-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                                    </label>
+                                </div>
+
+                                {/* Warmup Probe Count - only show if warmup enabled */}
+                                {configForm.warmupEnabled && (
+                                    <div className="space-y-2 mb-4 ml-4">
+                                        <label className="block">
+                                            <span className="text-sm font-medium text-gray-700">Probe da scartare</span>
+                                            <input
+                                                type="number"
+                                                value={configForm.warmupProbeCount}
+                                                onChange={(e) => setConfigForm({ ...configForm, warmupProbeCount: parseInt(e.target.value) || 2 })}
+                                                className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                                min={1}
+                                                max={5}
+                                            />
+                                        </label>
+                                        <p className="text-xs text-gray-500">
+                                            <span className="font-medium">Range: 1-5</span> | Default: 2
+                                        </p>
+                                    </div>
+                                )}
+
+                                {/* Outlier Filter Toggle */}
+                                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                                    <div>
+                                        <span className="text-sm font-medium text-gray-700">Filtro Outlier</span>
+                                        <p className="text-xs text-gray-500 mt-1">
+                                            Scarta valori RTT &gt; 3× mediana durante la calibrazione.
+                                        </p>
+                                    </div>
+                                    <label className="relative inline-flex items-center cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={configForm.outlierFilterEnabled}
+                                            onChange={(e) => setConfigForm({ ...configForm, outlierFilterEnabled: e.target.checked })}
+                                            className="sr-only peer"
+                                        />
+                                        <div className="w-11 h-6 bg-gray-300 peer-focus:ring-2 peer-focus:ring-blue-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                                    </label>
+                                </div>
+                            </div>
+
                             <div className="flex gap-3 pt-4 border-t border-gray-100">
                                 <button
                                     onClick={handleResetConfig}

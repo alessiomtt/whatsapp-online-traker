@@ -8,13 +8,18 @@
  * Based on research methodology from "Careless Whisper" paper.
  */
 
-import { config } from '../config';
+import { config, getCurrentEditableConfig } from '../config';
 
 export interface StateAnalysisResult {
     median: number;
     threshold: number;
     state: string;
     movingAvg: number;
+    calibrationProgress?: {
+        current: number;
+        total: number;
+        warmupRemaining?: number;
+    };
 }
 
 /**
@@ -27,16 +32,55 @@ export class RttAnalyzer {
     private lastCalculationSize: number = 0;
     private readonly RECALCULATION_INTERVAL = 10; // Recalculate every 10 measurements
 
+    // Warmup tracking
+    private warmupCount: number = 0;
+    private totalProbeCount: number = 0;
+
+    // Track minimum RTT seen (for outlier detection)
+    private minRttSeen: number = Infinity;
+
     /**
      * Add RTT measurement to global history
      * @param rtt Round-trip time in milliseconds
      */
     addMeasurement(rtt: number): void {
-        // Add all valid RTTs to history, even if above offline threshold
-        // This allows us to calculate median/threshold even when some values are high
-        // We'll still mark devices as offline if RTT > threshold, but we need the data for calculation
+        const editableConfig = getCurrentEditableConfig();
+        this.totalProbeCount++;
+
+        // Warmup: skip first N probes if enabled
+        if (editableConfig.warmupEnabled && this.warmupCount < editableConfig.warmupProbeCount) {
+            this.warmupCount++;
+            console.log(`[RTT ANALYZER] Warmup probe ${this.warmupCount}/${editableConfig.warmupProbeCount} - skipping`);
+            return;
+        }
+
+        // Outlier filter ONLY during calibration phase
+        // Uses min value comparison: reject if rtt > 5× minimum seen
+        const calibrationRequired = editableConfig.calibrationProbeCount;
+        const isCalibrating = this.globalRttHistory.length < calibrationRequired;
+
+        if (editableConfig.outlierFilterEnabled && isCalibrating && this.globalRttHistory.length >= 1) {
+            // Update min if this is a valid low value
+            if (rtt > 0 && rtt < this.minRttSeen) {
+                this.minRttSeen = rtt;
+            }
+
+            // Filter spike: rtt > 5× minimum seen
+            if (this.minRttSeen < Infinity && rtt > this.minRttSeen * 5) {
+                console.log(`[RTT ANALYZER] Outlier filtered during calibration: ${rtt}ms > 5x min (${this.minRttSeen}ms)`);
+                return;
+            }
+        }
+
+        // Add all valid RTTs to history
         if (rtt > 0 && rtt <= 60000) { // Allow up to 60 seconds
             this.globalRttHistory.push(rtt);
+
+            // Track minimum RTT
+            if (rtt < this.minRttSeen) {
+                this.minRttSeen = rtt;
+            }
+
             if (this.globalRttHistory.length > config.globalHistoryLimit) {
                 this.globalRttHistory.shift();
             }
@@ -158,8 +202,16 @@ export class RttAnalyzer {
             this.lastCalculationSize = historySize;
         }
 
+        const editableConfig = getCurrentEditableConfig();
+        const calibrationRequired = editableConfig.calibrationProbeCount;
+        const warmupRemaining = editableConfig.warmupEnabled
+            ? Math.max(0, editableConfig.warmupProbeCount - this.warmupCount)
+            : 0;
+
         let state: string;
-        if (historySize >= config.recentRttCount) {
+        let calibrationProgress: { current: number; total: number; warmupRemaining?: number } | undefined;
+
+        if (historySize >= calibrationRequired) {
             // State determination: compare moving average to threshold
             // Moving average below threshold = Active (device responding quickly)
             // Moving average above threshold = Standby (device responding slowly)
@@ -167,10 +219,15 @@ export class RttAnalyzer {
         } else {
             // Not enough data points yet - still calibrating
             state = 'Calibrating...';
+            calibrationProgress = {
+                current: historySize,
+                total: calibrationRequired,
+                warmupRemaining: warmupRemaining > 0 ? warmupRemaining : undefined
+            };
         }
 
         // Ensure we have valid values (should not be 0 if we have enough data)
-        if (historySize >= config.recentRttCount && (median === 0 || threshold === 0)) {
+        if (historySize >= calibrationRequired && (median === 0 || threshold === 0)) {
             console.warn(`[RTT ANALYZER] Warning: Invalid median (${median}) or threshold (${threshold}) with ${historySize} measurements`);
         }
 
@@ -178,7 +235,8 @@ export class RttAnalyzer {
             median,
             threshold,
             state,
-            movingAvg
+            movingAvg,
+            calibrationProgress
         };
     }
 
@@ -214,6 +272,8 @@ export class RttAnalyzer {
         this.cachedMedian = 0;
         this.cachedThreshold = 0;
         this.lastCalculationSize = 0;
+        this.warmupCount = 0;
+        this.totalProbeCount = 0;
+        this.minRttSeen = Infinity;
     }
 }
-

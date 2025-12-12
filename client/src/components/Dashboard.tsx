@@ -35,6 +35,11 @@ interface ContactInfo {
     archivedAt?: string | number;
     sessionId?: number;
     probeMethod?: 'reaction' | 'delete';
+    calibrationProgress?: {
+        current: number;
+        total: number;
+        warmupRemaining?: number;
+    };
 }
 
 interface DashboardProps {
@@ -97,6 +102,14 @@ export function Dashboard({ privacyMode, onOpenCompare }: DashboardProps) {
                     }
                     if (data.probeMethod !== undefined) {
                         updatedContact.probeMethod = data.probeMethod;
+                    }
+
+                    // Update calibration progress
+                    if (data.calibrationProgress !== undefined) {
+                        updatedContact.calibrationProgress = data.calibrationProgress;
+                    } else if (updatedContact.devices?.[0]?.state !== 'Calibrating...') {
+                        // Clear calibration progress once calibration is complete
+                        updatedContact.calibrationProgress = undefined;
                     }
 
                     // Add to chart data
@@ -895,6 +908,7 @@ export function Dashboard({ privacyMode, onOpenCompare }: DashboardProps) {
                             privacyMode={privacyMode}
                             onRename={handleRename}
                             probeMethod={contact.probeMethod}
+                            calibrationProgress={contact.calibrationProgress}
                         />
                     ))}
                 </div>
