@@ -39,30 +39,35 @@ class TrackerLogger {
         console.error(...args);
     }
 
-    formatDeviceState(jid: string, rtt: number, avgRtt: number, median: number, threshold: number, state: string) {
+    formatDeviceState(jid: string, rtt: number, avgRtt: number, median: number, threshold: number, state: string, contactName?: string, probeMethod?: string) {
         const stateColor = state === 'Online' ? '🟢' : state === 'Standby' ? '🟡' : state === 'OFFLINE' ? '🔴' : '⚪';
         const timestamp = new Date().toLocaleTimeString('it-IT');
 
-        // Box width is 64 characters, inner content is 62 characters (excluding ║ on both sides)
-        const boxWidth = 62;
+        // Use fixed-width labels for consistent alignment
+        const methodText = probeMethod === 'delete' ? '[D] Delete    ' : '[R] Reaction  ';
 
-        const header = `${stateColor} Device Status Update - ${timestamp}`;
-        const jidLine = `JID:        ${jid}`;
-        const statusLine = `Status:     ${state}`;
+        // Fixed content width (excluding border chars)
+        const contentWidth = 62;
+
+        const displayName = (contactName || jid.split('@')[0]).substring(0, 30);
+        // Header needs extra padding because emoji takes 2 visual chars but counts as more in string length
+        const headerText = `${displayName} - ${timestamp}`;
+        const methodLine = `Metodo:     ${methodText}`;
+        const statusLine = `Stato:      ${state}`;
         const rttLine = `RTT:        ${rtt}ms`;
-        const avgLine = `Avg (${config.recentRttCount}):    ${avgRtt.toFixed(0)}ms`;
-        const medianLine = `Median:     ${median.toFixed(0)}ms`;
-        const thresholdLine = `Threshold:  ${threshold.toFixed(0)}ms`;
+        const avgLine = `Media (${config.recentRttCount}):   ${avgRtt.toFixed(0)}ms`;
+        const medianLine = `Mediana:    ${median.toFixed(0)}ms`;
+        const thresholdLine = `Soglia:     ${threshold.toFixed(0)}ms`;
 
         console.log(`\n╔════════════════════════════════════════════════════════════════╗`);
-        console.log(`║ ${header.padEnd(boxWidth)} ║`);
+        console.log(`║ ${stateColor} ${headerText.padEnd(contentWidth - 3)} ║`);
         console.log(`╠════════════════════════════════════════════════════════════════╣`);
-        console.log(`║ ${jidLine.padEnd(boxWidth)} ║`);
-        console.log(`║ ${statusLine.padEnd(boxWidth)} ║`);
-        console.log(`║ ${rttLine.padEnd(boxWidth)} ║`);
-        console.log(`║ ${avgLine.padEnd(boxWidth)} ║`);
-        console.log(`║ ${medianLine.padEnd(boxWidth)} ║`);
-        console.log(`║ ${thresholdLine.padEnd(boxWidth)} ║`);
+        console.log(`║ ${methodLine.padEnd(contentWidth)} ║`);
+        console.log(`║ ${statusLine.padEnd(contentWidth)} ║`);
+        console.log(`║ ${rttLine.padEnd(contentWidth)} ║`);
+        console.log(`║ ${avgLine.padEnd(contentWidth)} ║`);
+        console.log(`║ ${medianLine.padEnd(contentWidth)} ║`);
+        console.log(`║ ${thresholdLine.padEnd(contentWidth)} ║`);
         console.log(`╚════════════════════════════════════════════════════════════════╝\n`);
     }
 }
@@ -117,13 +122,17 @@ export class WhatsAppTracker {
     // Probe method selection (per-contact)
     private probeMethod: ProbeMethod = 'reaction';
 
-    constructor(sock: WASocket, targetJid: string, debugMode: boolean = false, sessionId?: number, probeMethod: ProbeMethod = 'reaction') {
+    // Contact name for logging
+    private contactName: string | null = null;
+
+    constructor(sock: WASocket, targetJid: string, debugMode: boolean = false, sessionId?: number, probeMethod: ProbeMethod = 'reaction', contactName?: string) {
         this.sock = sock;
         this.targetJid = targetJid;
         this.trackedJids.add(targetJid);
         this.rttAnalyzer = new RttAnalyzer();
         this.sessionId = sessionId ?? null;
         this.probeMethod = probeMethod;
+        this.contactName = contactName ?? null;
         trackerLogger.setDebugMode(debugMode);
     }
 
@@ -645,7 +654,9 @@ export class WhatsAppTracker {
             analysis.movingAvg,
             analysis.median,
             analysis.threshold,
-            metrics.state
+            metrics.state,
+            this.contactName ?? undefined,
+            this.probeMethod
         );
 
         // Debug mode: Additional debug information

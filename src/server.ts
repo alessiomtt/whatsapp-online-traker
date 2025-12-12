@@ -325,8 +325,9 @@ io.on('connection', (socket) => {
 
                 // Get saved probe method (default 'reaction' if not set)
                 const savedProbeMethod = (session.probe_method || 'reaction') as ProbeMethod;
+                const trackerContactName = session.custom_name || validation.cleaned;
 
-                const tracker = new WhatsAppTracker(sock, result.jid, false, session.id, savedProbeMethod);
+                const tracker = new WhatsAppTracker(sock, result.jid, false, session.id, savedProbeMethod, trackerContactName);
                 trackers.set(result.jid, tracker);
 
                 tracker.onUpdate = (data) => {
