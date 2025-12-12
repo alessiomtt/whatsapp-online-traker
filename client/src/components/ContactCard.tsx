@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceArea } from 'recharts';
 import { Square, Activity, Wifi, Smartphone, Monitor, ChevronDown, ChevronUp, Edit2, Zap, Check, X, History, ArrowLeft, Play, AlertCircle, Archive, RotateCcw, CheckCircle, FileSpreadsheet, FileText } from 'lucide-react';
 import clsx from 'clsx';
 import { exportToExcel, exportToPDF } from '../utils/exportUtils';
@@ -156,6 +156,54 @@ export function ContactCard({
 
         return events.reverse(); // Most recent first
     }, [data]);
+
+    // Filter data to show only last 5 minutes for smooth scrolling effect
+    const CHART_TIME_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
+    const chartData = useMemo(() => {
+        if (data.length === 0) return [];
+        const now = Date.now();
+        const cutoff = now - CHART_TIME_WINDOW_MS;
+        return data.filter(d => d.timestamp >= cutoff);
+    }, [data]);
+
+    // Calculate state areas for colored background in chart (using filtered data)
+    const stateAreas = useMemo(() => {
+        if (chartData.length < 2) return [];
+
+        const areas: { x1: number; x2: number; state: string; color: string }[] = [];
+        let currentState = chartData[0].state;
+        let startIndex = 0;
+
+        const getStateColor = (state: string) => {
+            if (state.includes('Online')) return 'rgba(34, 197, 94, 0.15)'; // green
+            if (state === 'Standby') return 'rgba(234, 179, 8, 0.15)'; // yellow
+            if (state === 'OFFLINE') return 'rgba(239, 68, 68, 0.15)'; // red
+            return 'rgba(156, 163, 175, 0.1)'; // gray for calibrating
+        };
+
+        for (let i = 1; i < chartData.length; i++) {
+            if (chartData[i].state !== currentState) {
+                areas.push({
+                    x1: chartData[startIndex].timestamp,
+                    x2: chartData[i - 1].timestamp,
+                    state: currentState,
+                    color: getStateColor(currentState)
+                });
+                currentState = chartData[i].state;
+                startIndex = i;
+            }
+        }
+
+        // Add final area
+        areas.push({
+            x1: chartData[startIndex].timestamp,
+            x2: chartData[chartData.length - 1].timestamp,
+            state: currentState,
+            color: getStateColor(currentState)
+        });
+
+        return areas;
+    }, [chartData]);
 
     const handleSaveName = () => {
         if (onRename && nameInput.trim()) {
@@ -749,21 +797,81 @@ export function ContactCard({
                                 </div>
 
                                 {/* Chart - flex-1 to fill remaining height */}
-                                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 flex-1 min-h-[250px]">
-                                    <h5 className="text-sm font-medium text-gray-500 mb-4">RTT History & Threshold</h5>
-                                    <ResponsiveContainer width="100%" height="100%">
-                                        <LineChart data={data}>
-                                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-                                            <XAxis dataKey="timestamp" hide />
-                                            <YAxis domain={['auto', 'auto']} />
-                                            <Tooltip
-                                                labelFormatter={(t: number) => new Date(t).toLocaleTimeString()}
-                                                contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                                            />
-                                            <Line type="monotone" dataKey="avg" stroke="#3b82f6" strokeWidth={2} dot={false} name="Avg RTT" isAnimationActive={false} />
-                                            <Line type="step" dataKey="threshold" stroke="#ef4444" strokeDasharray="5 5" dot={false} name="Threshold" isAnimationActive={false} />
-                                        </LineChart>
-                                    </ResponsiveContainer>
+                                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 flex-1 min-h-[250px] flex flex-col">
+                                    <div className="flex items-center justify-between mb-2">
+                                        <h5 className="text-sm font-medium text-gray-500">RTT History & Threshold</h5>
+                                        <span className="text-xs text-gray-400">Ultimi 5 minuti</span>
+                                    </div>
+                                    <div className="flex-1">
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <LineChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+
+                                                {/* Colored areas for state visualization */}
+                                                {stateAreas.map((area, idx) => (
+                                                    <ReferenceArea
+                                                        key={idx}
+                                                        x1={area.x1}
+                                                        x2={area.x2}
+                                                        fill={area.color}
+                                                        fillOpacity={1}
+                                                    />
+                                                ))}
+
+                                                {/* X Axis with formatted time */}
+                                                <XAxis
+                                                    dataKey="timestamp"
+                                                    tickFormatter={(t: number) => new Date(t).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}
+                                                    tick={{ fontSize: 11, fill: '#6b7280' }}
+                                                    axisLine={{ stroke: '#e5e7eb' }}
+                                                    tickLine={{ stroke: '#e5e7eb' }}
+                                                    interval="preserveStartEnd"
+                                                    minTickGap={50}
+                                                />
+
+                                                <YAxis
+                                                    domain={['auto', 'auto']}
+                                                    tick={{ fontSize: 11, fill: '#6b7280' }}
+                                                    axisLine={{ stroke: '#e5e7eb' }}
+                                                    tickLine={{ stroke: '#e5e7eb' }}
+                                                    tickFormatter={(v: number) => `${v}`}
+                                                    width={45}
+                                                />
+
+                                                {/* Enhanced Tooltip */}
+                                                <Tooltip
+                                                    content={({ active, payload, label }) => {
+                                                        if (active && payload && payload.length) {
+                                                            const dataPoint = payload[0].payload as TrackerData;
+                                                            const stateColor = dataPoint.state.includes('Online') ? 'text-green-600' :
+                                                                dataPoint.state === 'Standby' ? 'text-yellow-600' :
+                                                                    dataPoint.state === 'OFFLINE' ? 'text-red-600' : 'text-gray-500';
+                                                            const labelTime = typeof label === 'number' ? new Date(label).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '';
+                                                            return (
+                                                                <div className="bg-white p-3 rounded-lg shadow-lg border border-gray-100">
+                                                                    <p className="text-xs text-gray-500 mb-1">
+                                                                        {labelTime}
+                                                                    </p>
+                                                                    <p className={`text-sm font-semibold ${stateColor}`}>
+                                                                        {dataPoint.state}
+                                                                    </p>
+                                                                    <div className="mt-1 space-y-0.5">
+                                                                        <p className="text-xs"><span className="text-gray-500">RTT:</span> <span className="font-medium text-blue-600">{dataPoint.avg.toFixed(0)} ms</span></p>
+                                                                        <p className="text-xs"><span className="text-gray-500">Soglia:</span> <span className="font-medium text-red-500">{dataPoint.threshold.toFixed(0)} ms</span></p>
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        }
+                                                        return null;
+                                                    }}
+                                                />
+
+                                                {/* Lines */}
+                                                <Line type="monotone" dataKey="avg" stroke="#3b82f6" strokeWidth={2} dot={false} name="Avg RTT" isAnimationActive={false} />
+                                                <Line type="step" dataKey="threshold" stroke="#ef4444" strokeDasharray="5 5" dot={false} name="Threshold" isAnimationActive={false} />
+                                            </LineChart>
+                                        </ResponsiveContainer>
+                                    </div>
                                 </div>
                             </div>
                         </div>
