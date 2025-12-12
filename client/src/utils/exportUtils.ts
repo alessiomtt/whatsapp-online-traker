@@ -168,7 +168,7 @@ export function exportToExcel(data: ExportData): void {
 /**
  * Export activity log to professional PDF format
  */
-export function exportToPDF(data: ExportData): void {
+export async function exportToPDF(data: ExportData): Promise<void> {
     const { contactName, contactNumber, jid, events } = data;
 
     // Create PDF document
@@ -202,10 +202,73 @@ export function exportToPDF(data: ExportData): void {
     doc.setLineWidth(0.5);
     doc.roundedRect(10, yPos, pageWidth - 20, 35, 3, 3, 'S');
 
+    // Profile picture area
+    const picX = 15;
+    const picY = yPos + 5;
+    const picSize = 25;
+    const textStartX = 45; // Default text start position (after pic area)
+
+    // Helper function to create circular image
+    const createCircularImage = (imgSrc: string): Promise<string> => {
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                const size = 200; // Higher resolution for quality
+                canvas.width = size;
+                canvas.height = size;
+                const ctx = canvas.getContext('2d');
+                if (!ctx) {
+                    reject('No canvas context');
+                    return;
+                }
+                // Create circular clip
+                ctx.beginPath();
+                ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
+                ctx.closePath();
+                ctx.clip();
+                // Draw image
+                ctx.drawImage(img, 0, 0, size, size);
+                resolve(canvas.toDataURL('image/png'));
+            };
+            img.onerror = () => reject('Image load error');
+            img.src = imgSrc;
+        });
+    };
+
+    // Try to add profile picture if available
+    let circularPicAdded = false;
+    if (data.profilePic) {
+        try {
+            const circularImg = await createCircularImage(data.profilePic);
+            doc.addImage(circularImg, 'PNG', picX, picY, picSize, picSize);
+            // Draw a circle border around it
+            doc.setDrawColor(76, 175, 80);
+            doc.setLineWidth(0.8);
+            doc.circle(picX + picSize / 2, picY + picSize / 2, picSize / 2, 'S');
+            circularPicAdded = true;
+        } catch {
+            circularPicAdded = false;
+        }
+    }
+
+    if (!circularPicAdded) {
+        // Draw placeholder circle with user silhouette
+        doc.setFillColor(200, 200, 200);
+        doc.circle(picX + picSize / 2, picY + picSize / 2, picSize / 2, 'F');
+        doc.setDrawColor(76, 175, 80);
+        doc.circle(picX + picSize / 2, picY + picSize / 2, picSize / 2, 'S');
+        // Draw a simple user icon
+        doc.setFillColor(150, 150, 150);
+        doc.circle(picX + picSize / 2, picY + picSize / 2 - 3, 4, 'F'); // head
+        doc.ellipse(picX + picSize / 2, picY + picSize / 2 + 7, 7, 5, 'F'); // body
+    }
+
     doc.setTextColor(27, 94, 32);
     doc.setFontSize(12);
     doc.setFont('helvetica', 'bold');
-    doc.text('Informazioni Contatto', 15, yPos + 10);
+    doc.text('Informazioni Contatto', textStartX, yPos + 10);
 
     doc.setTextColor(0, 0, 0);
     doc.setFont('helvetica', 'normal');
@@ -213,12 +276,12 @@ export function exportToPDF(data: ExportData): void {
 
     const displayName = contactName || contactNumber;
     if (contactName) {
-        doc.text(`Nome: ${contactName}`, 15, yPos + 20);
-        doc.text(`Numero: ${contactNumber}`, 15, yPos + 28);
+        doc.text(`Nome: ${contactName}`, textStartX, yPos + 20);
+        doc.text(`Numero: ${contactNumber}`, textStartX, yPos + 28);
     } else {
-        doc.text(`Numero: ${contactNumber}`, 15, yPos + 20);
+        doc.text(`Numero: ${contactNumber}`, textStartX, yPos + 20);
         if (jid) {
-            doc.text(`JID: ${jid}`, 15, yPos + 28);
+            doc.text(`JID: ${jid}`, textStartX, yPos + 28);
         }
     }
 

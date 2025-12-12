@@ -615,7 +615,8 @@ export function ContactCard({
                                                 contactName: displayNumber !== jid.split('@')[0] ? displayNumber : undefined,
                                                 contactNumber: jid.split('@')[0],
                                                 jid: jid,
-                                                events: activityLog
+                                                events: activityLog,
+                                                profilePic: profilePic || undefined
                                             })}
                                             className="flex items-center gap-1 px-3 py-1.5 bg-white text-red-600 hover:bg-red-50 rounded-lg text-xs font-medium transition-colors border border-red-200"
                                             title="Esporta in PDF"

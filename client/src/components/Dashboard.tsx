@@ -726,6 +726,7 @@ export function Dashboard({ privacyMode }: DashboardProps) {
                                                     contactName={contact.displayNumber !== contact.jid.split('@')[0] ? contact.displayNumber : undefined}
                                                     contactNumber={contact.jid.split('@')[0]}
                                                     jid={contact.jid}
+                                                    profilePic={contact.profilePic || undefined}
                                                 />
 
                                                 {/* Load More Button */}
@@ -967,11 +968,12 @@ export function Dashboard({ privacyMode }: DashboardProps) {
 }
 
 // Simple Log View component for archived contacts
-function LogView({ data, contactName, contactNumber, jid }: {
+function LogView({ data, contactName, contactNumber, jid, profilePic }: {
     data: TrackerData[];
     contactName?: string;
     contactNumber?: string;
     jid?: string;
+    profilePic?: string;
 }) {
     if (data.length === 0) {
         return (
@@ -1068,7 +1070,8 @@ function LogView({ data, contactName, contactNumber, jid }: {
                             contactName,
                             contactNumber,
                             jid,
-                            events: exportEvents
+                            events: exportEvents,
+                            profilePic
                         })}
                         className="flex items-center gap-1 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors"
                         title="Esporta in PDF"
