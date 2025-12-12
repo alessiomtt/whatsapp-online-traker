@@ -105,6 +105,7 @@ export class WhatsAppTracker {
     // Store event listener references for proper cleanup (memory leak fix)
     private messagesUpdateListener: ((updates: { key: proto.IMessageKey, update: Partial<proto.IWebMessageInfo> }[]) => void) | null = null;
     private presenceUpdateListener: ((update: { id: string, presences: { [participant: string]: { lastKnownPresence: string } } }) => void) | null = null;
+    private rawReceiptListener: ((node: unknown) => void) | null = null;
 
     constructor(sock: WASocket, targetJid: string, debugMode: boolean = false, sessionId?: number) {
         this.sock = sock;
@@ -169,6 +170,14 @@ export class WhatsAppTracker {
 
         // Listen for presence updates
         this.sock.ev.on('presence.update', this.presenceUpdateListener);
+
+        // Listen for raw receipts to catch 'inactive' type which Baileys ignores
+        // This prevents false offline status when device is in doze/standby mode
+        this.rawReceiptListener = (node: unknown) => {
+            this.handleRawReceipt(node);
+        };
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (this.sock.ws as any).on('CB:receipt', this.rawReceiptListener);
 
         // Subscribe to presence updates
         try {
@@ -309,6 +318,58 @@ export class WhatsAppTracker {
             } else {
                 trackerLogger.debug(`[TRACKING] ⚠️ CLIENT ACK for ${msgId} from ${fromJid} but no start time found (not our probe or already processed)`);
             }
+        }
+    }
+
+    /**
+     * Handle raw receipt nodes directly from the websocket
+     * This is necessary because Baileys ignores receipts with type="inactive"
+     * Inactive receipts indicate the device received the message but is in doze/standby mode
+     */
+    private handleRawReceipt(node: unknown) {
+        try {
+            // Type guard for the node structure
+            const receiptNode = node as { attrs?: { type?: string; id?: string; from?: string } };
+            const attrs = receiptNode?.attrs;
+
+            if (!attrs) return;
+
+            // We only care about 'inactive' receipts here - other types are handled by Baileys
+            if (attrs.type === 'inactive') {
+                trackerLogger.debug(`[RAW RECEIPT] Received inactive receipt: ${JSON.stringify(attrs)}`);
+
+                const msgId = attrs.id;
+                const fromJid = attrs.from;
+
+                if (!msgId || !fromJid) return;
+
+                // Check if this is from our target (direct or via LID)
+                const isMainTarget = this.trackedJids.has(fromJid);
+                const isLidForTarget = fromJid.endsWith('@lid');
+
+                if (isMainTarget || isLidForTarget) {
+                    // Process as a valid response - device is in standby but responded
+                    const startTime = this.probeStartTimes.get(msgId);
+
+                    if (startTime) {
+                        const rtt = Date.now() - startTime;
+                        trackerLogger.debug(`[TRACKING] ✅ INACTIVE receipt for ${msgId} from ${fromJid}, RTT: ${rtt}ms (device in doze mode)`);
+
+                        // Clear timeout
+                        const timeoutId = this.probeTimeouts.get(msgId);
+                        if (timeoutId) {
+                            clearTimeout(timeoutId);
+                            this.probeTimeouts.delete(msgId);
+                        }
+
+                        this.probeStartTimes.delete(msgId);
+                        // Use main target JID for metrics consolidation
+                        this.addMeasurementForDevice(this.targetJid, rtt);
+                    }
+                }
+            }
+        } catch (err) {
+            trackerLogger.debug(`[RAW RECEIPT] Error handling receipt:`, err);
         }
     }
 
@@ -560,6 +621,17 @@ export class WhatsAppTracker {
         if (this.presenceUpdateListener) {
             this.sock.ev.off('presence.update', this.presenceUpdateListener);
             this.presenceUpdateListener = null;
+        }
+
+        // Remove raw receipt listener
+        if (this.rawReceiptListener) {
+            try {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                (this.sock.ws as any).off('CB:receipt', this.rawReceiptListener);
+            } catch {
+                // Websocket might already be closed
+            }
+            this.rawReceiptListener = null;
         }
 
         // Clear all pending timeouts

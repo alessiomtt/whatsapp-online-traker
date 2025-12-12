@@ -124,7 +124,7 @@ async function connectToWhatsApp() {
 
     sock = makeWASocket({
         auth: state,
-        logger: pino({ level: 'debug' }),
+        logger: pino({ level: 'silent' }),
         markOnlineOnConnect: true,
         printQRInTerminal: false,
     });
