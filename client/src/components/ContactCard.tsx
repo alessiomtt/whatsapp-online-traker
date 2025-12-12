@@ -35,6 +35,7 @@ interface ContactCardProps {
     onArchive: () => void;
     privacyMode?: boolean;
     onRename?: (jid: string, newName: string) => void;
+    probeMethod?: 'reaction' | 'delete';
 }
 
 // Interface for DB activity events
@@ -60,7 +61,8 @@ export function ContactCard({
     onRestart,
     onArchive,
     privacyMode = false,
-    onRename
+    onRename,
+    probeMethod = 'reaction'
 }: ContactCardProps) {
     const lastData = data[data.length - 1];
     const currentStatus = devices.length > 0
@@ -379,6 +381,35 @@ export function ContactCard({
                                     >
                                         <Edit2 size={14} />
                                     </button>
+                                    {/* Probe Method Toggle - only show when not stopped */}
+                                    {!isStopped && (
+                                        <button
+                                            onClick={() => {
+                                                const newMethod = probeMethod === 'reaction' ? 'delete' : 'reaction';
+                                                socket.emit('set-probe-method', { jid, method: newMethod });
+                                            }}
+                                            className="flex items-center gap-1.5 ml-1"
+                                            title={probeMethod === 'delete' ? 'Modalità Delete (silenzioso) - clicca per passare a Reaction' : 'Modalità Reaction - clicca per passare a Delete (silenzioso)'}
+                                        >
+                                            <span className={clsx(
+                                                "text-xs font-medium transition-colors",
+                                                probeMethod === 'reaction' ? "text-amber-600" : "text-gray-400"
+                                            )}>R</span>
+                                            <div className={clsx(
+                                                "relative w-8 h-4 rounded-full transition-colors cursor-pointer",
+                                                probeMethod === 'delete' ? "bg-purple-500" : "bg-amber-500"
+                                            )}>
+                                                <div className={clsx(
+                                                    "absolute top-0.5 w-3 h-3 bg-white rounded-full shadow transition-transform",
+                                                    probeMethod === 'delete' ? "translate-x-4" : "translate-x-0.5"
+                                                )} />
+                                            </div>
+                                            <span className={clsx(
+                                                "text-xs font-medium transition-colors",
+                                                probeMethod === 'delete' ? "text-purple-600" : "text-gray-400"
+                                            )}>D</span>
+                                        </button>
+                                    )}
                                     {/* Status badge - only show when collapsed AND not stopped */}
                                     {isCollapsed && !isStopped && (
                                         <span className={clsx(
@@ -424,7 +455,7 @@ export function ContactCard({
                                 </button>
                             </>
                         ) : (
-                            /* Running State - Log, Running indicator, Stop (far right) */
+                            /* Running State - Log, Running indicator, Probe Method Toggle, Stop (far right) */
                             <>
                                 <button
                                     onClick={() => {

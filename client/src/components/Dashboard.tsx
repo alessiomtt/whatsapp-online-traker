@@ -34,6 +34,7 @@ interface ContactInfo {
     isStopped?: boolean;
     archivedAt?: string | number;
     sessionId?: number;
+    probeMethod?: 'reaction' | 'delete';
 }
 
 interface DashboardProps {
@@ -94,6 +95,9 @@ export function Dashboard({ privacyMode, onOpenCompare }: DashboardProps) {
                     if (data.devices !== undefined) {
                         updatedContact.devices = data.devices;
                     }
+                    if (data.probeMethod !== undefined) {
+                        updatedContact.probeMethod = data.probeMethod;
+                    }
 
                     // Add to chart data
                     if (data.median !== undefined && data.devices && data.devices.length > 0) {
@@ -137,6 +141,17 @@ export function Dashboard({ privacyMode, onOpenCompare }: DashboardProps) {
                 const contact = next.get(data.jid);
                 if (contact) {
                     next.set(data.jid, { ...contact, contactName: data.name });
+                }
+                return next;
+            });
+        }
+
+        function onProbeMethodChanged(data: { jid: string, method: 'reaction' | 'delete' }) {
+            setContacts(prev => {
+                const next = new Map(prev);
+                const contact = next.get(data.jid);
+                if (contact) {
+                    next.set(data.jid, { ...contact, probeMethod: data.method });
                 }
                 return next;
             });
@@ -428,6 +443,7 @@ export function Dashboard({ privacyMode, onOpenCompare }: DashboardProps) {
         socket.on('contact-status', onContactStatus);
         socket.on('stopped-contacts', onStoppedContacts);
         socket.on('database-cleared', onDatabaseCleared);
+        socket.on('probe-method-changed', onProbeMethodChanged);
 
         return () => {
             socket.off('tracker-update', onTrackerUpdate);
@@ -445,7 +461,7 @@ export function Dashboard({ privacyMode, onOpenCompare }: DashboardProps) {
             socket.off('contact-status', onContactStatus);
             socket.off('stopped-contacts', onStoppedContacts);
             socket.off('database-cleared', onDatabaseCleared);
-
+            socket.off('probe-method-changed', onProbeMethodChanged);
         };
     }, []);
 
@@ -878,6 +894,7 @@ export function Dashboard({ privacyMode, onOpenCompare }: DashboardProps) {
                             onArchive={() => handleArchive(contact.jid)}
                             privacyMode={privacyMode}
                             onRename={handleRename}
+                            probeMethod={contact.probeMethod}
                         />
                     ))}
                 </div>

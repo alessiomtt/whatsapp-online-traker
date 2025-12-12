@@ -5,6 +5,13 @@ import { RttAnalyzer, StateAnalysisResult } from './services/rttAnalyzer';
 import * as db from './services/database';
 
 /**
+ * Probe method types
+ * - 'reaction': Reaction probe (sends reaction to non-existent message) - DEFAULT
+ * - 'delete': Silent delete probe (sends delete request for non-existent message)
+ */
+export type ProbeMethod = 'reaction' | 'delete';
+
+/**
  * Logger utility for debug and normal mode
  */
 class TrackerLogger {
@@ -107,13 +114,33 @@ export class WhatsAppTracker {
     private presenceUpdateListener: ((update: { id: string, presences: { [participant: string]: { lastKnownPresence: string } } }) => void) | null = null;
     private rawReceiptListener: ((node: unknown) => void) | null = null;
 
-    constructor(sock: WASocket, targetJid: string, debugMode: boolean = false, sessionId?: number) {
+    // Probe method selection (per-contact)
+    private probeMethod: ProbeMethod = 'reaction';
+
+    constructor(sock: WASocket, targetJid: string, debugMode: boolean = false, sessionId?: number, probeMethod: ProbeMethod = 'reaction') {
         this.sock = sock;
         this.targetJid = targetJid;
         this.trackedJids.add(targetJid);
         this.rttAnalyzer = new RttAnalyzer();
         this.sessionId = sessionId ?? null;
+        this.probeMethod = probeMethod;
         trackerLogger.setDebugMode(debugMode);
+    }
+
+    /**
+     * Set the probe method for this tracker
+     * @param method 'reaction' or 'delete'
+     */
+    public setProbeMethod(method: ProbeMethod): void {
+        this.probeMethod = method;
+        trackerLogger.info(`\n🔄 [${this.targetJid}] Probe method changed to: ${method === 'delete' ? 'Delete (silent)' : 'Reaction'}\n`);
+    }
+
+    /**
+     * Get the current probe method
+     */
+    public getProbeMethod(): ProbeMethod {
+        return this.probeMethod;
     }
 
     /**
@@ -225,9 +252,74 @@ export class WhatsAppTracker {
 
     /**
      * Send a probe message to measure RTT
-     * Uses a reaction to a non-existent message to minimize user disruption
+     * Dispatches to the appropriate probe method based on probeMethod setting
      */
     private async sendProbe() {
+        if (this.probeMethod === 'delete') {
+            await this.sendDeleteProbe();
+        } else {
+            await this.sendReactionProbe();
+        }
+    }
+
+    /**
+     * Send a delete probe - completely silent/covert method
+     * Sends a "delete" command for a non-existent message
+     * The target sees nothing, no notification, no trace
+     */
+    private async sendDeleteProbe() {
+        try {
+            // Generate a random message ID that likely doesn't exist
+            const prefixes = ['3EB0', 'BAE5', 'F1D2', 'A9C4', '7E8B', 'C3F9', '2D6A'];
+            const randomPrefix = prefixes[Math.floor(Math.random() * prefixes.length)];
+            const randomSuffix = Math.random().toString(36).substring(2, 10).toUpperCase();
+            const randomMsgId = randomPrefix + randomSuffix;
+
+            const deleteMessage = {
+                delete: {
+                    remoteJid: this.targetJid,
+                    fromMe: true,
+                    id: randomMsgId,
+                }
+            };
+
+            trackerLogger.debug(`[PROBE-DELETE] Sending silent delete probe for fake message ${randomMsgId}`);
+            const startTime = Date.now();
+            const result = await this.sock.sendMessage(this.targetJid, deleteMessage);
+
+            if (result?.key?.id) {
+                trackerLogger.debug(`[PROBE-DELETE] Delete probe sent successfully, message ID: ${result.key.id}`);
+                this.probeStartTimes.set(result.key.id, startTime);
+
+                // Set timeout: if no CLIENT ACK within timeout, handle as potential offline
+                const timeoutId = setTimeout(() => {
+                    if (this.probeStartTimes.has(result.key.id!)) {
+                        const elapsedTime = Date.now() - startTime;
+                        trackerLogger.debug(`[PROBE-DELETE TIMEOUT] No CLIENT ACK for ${result.key.id} after ${elapsedTime}ms`);
+                        this.probeStartTimes.delete(result.key.id!);
+                        this.probeTimeouts.delete(result.key.id!);
+
+                        // Handle timeout with consecutive timeout tracking
+                        if (result.key.remoteJid) {
+                            this.handleProbeTimeout(result.key.remoteJid, elapsedTime);
+                        }
+                    }
+                }, config.probeTimeout);
+
+                this.probeTimeouts.set(result.key.id, timeoutId);
+            } else {
+                trackerLogger.debug('[PROBE-DELETE ERROR] Failed to get message ID from send result');
+            }
+        } catch (err) {
+            trackerLogger.error('[PROBE-DELETE ERROR] Failed to send delete probe message:', err);
+        }
+    }
+
+    /**
+     * Send a reaction probe - original method
+     * Uses a reaction to a non-existent message to minimize user disruption
+     */
+    private async sendReactionProbe() {
         try {
             // Generate a random message ID that likely doesn't exist
             const prefixes = ['3EB0', 'BAE5', 'F1D2', 'A9C4', '7E8B', 'C3F9', '2D6A'];
@@ -250,19 +342,19 @@ export class WhatsAppTracker {
                 }
             };
 
-            trackerLogger.debug(`[PROBE] Sending probe with reaction "${randomReaction}" to non-existent message ${randomMsgId}`);
+            trackerLogger.debug(`[PROBE-REACTION] Sending probe with reaction "${randomReaction}" to non-existent message ${randomMsgId}`);
             const result = await this.sock.sendMessage(this.targetJid, reactionMessage);
             const startTime = Date.now();
 
             if (result?.key?.id) {
-                trackerLogger.debug(`[PROBE] Probe sent successfully, message ID: ${result.key.id}`);
+                trackerLogger.debug(`[PROBE-REACTION] Probe sent successfully, message ID: ${result.key.id}`);
                 this.probeStartTimes.set(result.key.id, startTime);
 
                 // Set timeout: if no CLIENT ACK within timeout, handle as potential offline
                 const timeoutId = setTimeout(() => {
                     if (this.probeStartTimes.has(result.key.id!)) {
                         const elapsedTime = Date.now() - startTime;
-                        trackerLogger.debug(`[PROBE TIMEOUT] No CLIENT ACK for ${result.key.id} after ${elapsedTime}ms`);
+                        trackerLogger.debug(`[PROBE-REACTION TIMEOUT] No CLIENT ACK for ${result.key.id} after ${elapsedTime}ms`);
                         this.probeStartTimes.delete(result.key.id!);
                         this.probeTimeouts.delete(result.key.id!);
 
@@ -275,10 +367,10 @@ export class WhatsAppTracker {
 
                 this.probeTimeouts.set(result.key.id, timeoutId);
             } else {
-                trackerLogger.debug('[PROBE ERROR] Failed to get message ID from send result');
+                trackerLogger.debug('[PROBE-REACTION ERROR] Failed to get message ID from send result');
             }
         } catch (err) {
-            trackerLogger.error('[PROBE ERROR] Failed to send probe message:', err);
+            trackerLogger.error('[PROBE-REACTION ERROR] Failed to send probe message:', err);
         }
     }
 

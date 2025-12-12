@@ -14,7 +14,7 @@ import cors from 'cors';
 import makeWASocket, { DisconnectReason, useMultiFileAuthState } from '@whiskeysockets/baileys';
 import { pino } from 'pino';
 import { Boom } from '@hapi/boom';
-import { WhatsAppTracker } from './tracker';
+import { WhatsAppTracker, ProbeMethod } from './tracker';
 import { validatePhoneNumber, createWhatsAppJid } from './utils/validation';
 import { config, getCurrentEditableConfig, getDefaultEditableConfig, saveCustomConfig, resetToDefaultConfig, hasCustomConfig, EditableConfig } from './config';
 import * as db from './services/database';
@@ -323,13 +323,16 @@ io.on('connection', (socket) => {
                 const session = db.createSession(result.jid, validation.cleaned);
                 sessionIds.set(result.jid, session.id);
 
+                // Get saved probe method (default 'reaction' if not set)
+                const savedProbeMethod = (session.probe_method || 'reaction') as ProbeMethod;
 
-                const tracker = new WhatsAppTracker(sock, result.jid, false, session.id);
+                const tracker = new WhatsAppTracker(sock, result.jid, false, session.id, savedProbeMethod);
                 trackers.set(result.jid, tracker);
 
                 tracker.onUpdate = (data) => {
                     io.emit('tracker-update', {
                         jid: result.jid,
+                        probeMethod: tracker.getProbeMethod(),
                         ...(data as object)
                     });
                 };
@@ -437,6 +440,20 @@ io.on('connection', (socket) => {
         console.log(`Request to permanently delete: ${jid}`);
         db.deleteSession(jid);
         io.emit('contact-deleted', jid);
+    });
+
+    // Set probe method for a specific contact
+    socket.on('set-probe-method', (data: { jid: string, method: 'reaction' | 'delete' }) => {
+        console.log(`Request to change probe method for ${data.jid} to: ${data.method}`);
+
+        const tracker = trackers.get(data.jid);
+        if (tracker) {
+            tracker.setProbeMethod(data.method);
+            db.updateSessionProbeMethod(data.jid, data.method);
+            io.emit('probe-method-changed', { jid: data.jid, method: data.method });
+        } else {
+            socket.emit('error', { jid: data.jid, message: 'Tracker not found' });
+        }
     });
 
     socket.on('get-archived', () => {

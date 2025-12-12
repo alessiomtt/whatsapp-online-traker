@@ -21,6 +21,7 @@ export interface Session {
     archived_at: string | null;
     is_active: number;
     is_archived: number;
+    probe_method: string; // 'reaction' or 'delete'
 }
 
 export interface ActivityLog {
@@ -109,6 +110,18 @@ export function initDatabase(): Database.Database {
         CREATE INDEX IF NOT EXISTS idx_sessions_archived ON sessions(is_archived);
     `);
 
+    // Migration: Add probe_method column if it doesn't exist (for existing databases)
+    try {
+        const columns = db.prepare(`PRAGMA table_info(sessions)`).all() as { name: string }[];
+        const hasProbeMethod = columns.some(col => col.name === 'probe_method');
+        if (!hasProbeMethod) {
+            db.exec(`ALTER TABLE sessions ADD COLUMN probe_method TEXT DEFAULT 'reaction'`);
+            console.log('[DATABASE] Migration: Added probe_method column');
+        }
+    } catch {
+        // Column might already exist
+    }
+
     console.log('[DATABASE] Initialized at:', dbPath);
     return db;
 }
@@ -190,6 +203,27 @@ export function updateSessionProfilePic(jid: string, profilePicUrl: string | nul
     database.prepare(`
         UPDATE sessions SET profile_pic_url = ? WHERE jid = ? AND is_active = 1
     `).run(profilePicUrl, jid);
+}
+
+/**
+ * Update session probe method
+ */
+export function updateSessionProbeMethod(jid: string, probeMethod: string): void {
+    const database = getDatabase();
+    database.prepare(`
+        UPDATE sessions SET probe_method = ? WHERE jid = ? AND is_active = 1
+    `).run(probeMethod, jid);
+}
+
+/**
+ * Get session probe method
+ */
+export function getSessionProbeMethod(jid: string): string {
+    const database = getDatabase();
+    const result = database.prepare(`
+        SELECT probe_method FROM sessions WHERE jid = ? AND is_active = 1
+    `).get(jid) as { probe_method: string } | undefined;
+    return result?.probe_method || 'reaction';
 }
 
 /**
