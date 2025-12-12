@@ -350,11 +350,12 @@ export class WhatsAppTracker {
             // Only mark as OFFLINE after multiple consecutive timeouts
             // This prevents false positives from network hiccups
             if (metrics.consecutiveTimeouts >= 3) {
+                const wasOffline = metrics.state === 'OFFLINE';
                 metrics.state = 'OFFLINE';
                 trackerLogger.info(`\n🔴 Device ${jid} marked as OFFLINE (${metrics.consecutiveTimeouts} consecutive timeouts)\n`);
 
-                // Log OFFLINE event to database
-                if (this.sessionId) {
+                // Log OFFLINE event to database - ONLY if not already offline
+                if (this.sessionId && !wasOffline) {
                     try {
                         db.logEvent({
                             sessionId: this.sessionId,
@@ -364,6 +365,7 @@ export class WhatsAppTracker {
                             state: 'OFFLINE',
                             deviceJid: jid
                         });
+                        this.lastLoggedState = 'OFFLINE';
                     } catch (err) {
                         trackerLogger.debug('[DATABASE] Error logging offline event:', err);
                     }
