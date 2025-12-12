@@ -248,6 +248,58 @@ export function ContactCard({
         return areas;
     }, [chartData]);
 
+    // Calculate dynamic Y-axis domain to keep threshold line roughly centered
+    // This is purely visual - does NOT affect actual tracking data
+    const yAxisDomain = useMemo(() => {
+        if (chartData.length === 0) return [0, 1000];
+
+        // Get the current threshold from the most recent data point
+        const lastThreshold = chartData[chartData.length - 1]?.threshold || 500;
+
+        // To keep threshold at ~45% of chart height:
+        // yMax = threshold / 0.45 ≈ threshold * 2.2
+        // This gives the threshold line a stable visual position
+        const targetMax = Math.round(lastThreshold * 2.2);
+
+        // Ensure minimum of 500ms and round to nice number
+        const roundedMax = Math.max(
+            Math.ceil(targetMax / 100) * 100,
+            500
+        );
+
+        return [0, roundedMax];
+    }, [chartData]);
+
+    // Create display data with capped values for cleaner visualization
+    // Spikes are visually clipped to yMax but original data is preserved for calculations
+    // Also creates a separate spikeAvg for red spike line visualization
+    const { displayChartData, maxSpikeValue, hasSpikes } = useMemo(() => {
+        const yMax = yAxisDomain[1];
+        let maxSpike = 0;
+        let spikesExist = false;
+
+        const data = chartData.map(d => {
+            const isClipped = d.avg > yMax;
+            if (isClipped) {
+                spikesExist = true;
+                maxSpike = Math.max(maxSpike, d.avg);
+            }
+            return {
+                ...d,
+                avg: Math.min(d.avg, yMax),
+                rtt: Math.min(d.rtt, yMax),
+                // spikeAvg: only set when clipped, used for red spike line
+                spikeAvg: isClipped ? yMax : undefined,
+            };
+        });
+
+        return {
+            displayChartData: data,
+            maxSpikeValue: maxSpike > 0 ? Math.round(maxSpike) : null,
+            hasSpikes: spikesExist
+        };
+    }, [chartData, yAxisDomain]);
+
     const handleSaveName = () => {
         if (onRename && nameInput.trim()) {
             onRename(jid, nameInput.trim());
@@ -883,31 +935,38 @@ export function ContactCard({
 
                             {/* Metrics & Chart */}
                             <div className="md:col-span-2 flex flex-col gap-6 h-full">
-                                {/* Metrics Grid */}
-                                <div className="grid grid-cols-3 gap-4">
-                                    <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
-                                        <div className="text-sm text-gray-500 mb-1 flex items-center gap-1"><Activity size={16} /> Current Avg RTT</div>
-                                        <div className="text-2xl font-bold text-gray-900">{lastData?.avg.toFixed(0) || '-'} ms</div>
+                                {/* Compact Metrics Row */}
+                                <div className="grid grid-cols-3 gap-2">
+                                    <div className="bg-white px-3 py-2 rounded-lg shadow-sm border border-gray-200">
+                                        <div className="text-xs text-gray-500">Avg RTT</div>
+                                        <div className="text-lg font-bold text-gray-900">{lastData?.avg.toFixed(0) || '-'}<span className="text-xs font-normal text-gray-400 ml-0.5">ms</span></div>
                                     </div>
-                                    <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
-                                        <div className="text-sm text-gray-500 mb-1">Median (50)</div>
-                                        <div className="text-2xl font-bold text-gray-900">{lastData?.median.toFixed(0) || '-'} ms</div>
+                                    <div className="bg-white px-3 py-2 rounded-lg shadow-sm border border-gray-200">
+                                        <div className="text-xs text-gray-500">Median</div>
+                                        <div className="text-lg font-bold text-gray-900">{lastData?.median.toFixed(0) || '-'}<span className="text-xs font-normal text-gray-400 ml-0.5">ms</span></div>
                                     </div>
-                                    <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
-                                        <div className="text-sm text-gray-500 mb-1">Threshold</div>
-                                        <div className="text-2xl font-bold text-blue-600">{lastData?.threshold.toFixed(0) || '-'} ms</div>
+                                    <div className="bg-white px-3 py-2 rounded-lg shadow-sm border border-gray-200">
+                                        <div className="text-xs text-gray-500">Soglia</div>
+                                        <div className="text-lg font-bold text-red-500">{lastData?.threshold.toFixed(0) || '-'}<span className="text-xs font-normal text-red-400 ml-0.5">ms</span></div>
                                     </div>
                                 </div>
 
                                 {/* Chart - flex-1 to fill remaining height */}
                                 <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 flex-1 min-h-[250px] flex flex-col">
                                     <div className="flex items-center justify-between mb-2">
-                                        <h5 className="text-sm font-medium text-gray-500">RTT History & Threshold</h5>
+                                        <div className="flex items-center gap-2">
+                                            <h5 className="text-sm font-medium text-gray-500">RTT History & Threshold</h5>
+                                            {hasSpikes && maxSpikeValue && (
+                                                <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-medium">
+                                                    Max spike: {maxSpikeValue}ms
+                                                </span>
+                                            )}
+                                        </div>
                                         <span className="text-xs text-gray-400">Ultimi 5 minuti</span>
                                     </div>
                                     <div className="flex-1">
                                         <ResponsiveContainer width="100%" height="100%">
-                                            <LineChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                                            <LineChart data={displayChartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
 
                                                 {/* Colored areas for state visualization */}
@@ -916,8 +975,11 @@ export function ContactCard({
                                                         key={idx}
                                                         x1={area.x1}
                                                         x2={area.x2}
+                                                        y1={yAxisDomain[0]}
+                                                        y2={yAxisDomain[1]}
                                                         fill={area.color}
                                                         fillOpacity={1}
+                                                        ifOverflow="extendDomain"
                                                     />
                                                 ))}
 
@@ -933,7 +995,7 @@ export function ContactCard({
                                                 />
 
                                                 <YAxis
-                                                    domain={['auto', 'auto']}
+                                                    domain={yAxisDomain}
                                                     tick={{ fontSize: 11, fill: '#6b7280' }}
                                                     axisLine={{ stroke: '#e5e7eb' }}
                                                     tickLine={{ stroke: '#e5e7eb' }}
@@ -971,6 +1033,19 @@ export function ContactCard({
 
                                                 {/* Lines */}
                                                 <Line type="monotone" dataKey="avg" stroke="#3b82f6" strokeWidth={2} dot={false} name="Avg RTT" isAnimationActive={false} />
+                                                {/* Red spike line - only shows for clipped portions */}
+                                                {hasSpikes && (
+                                                    <Line
+                                                        type="monotone"
+                                                        dataKey="spikeAvg"
+                                                        stroke="#ef4444"
+                                                        strokeWidth={3}
+                                                        dot={false}
+                                                        name="Spike"
+                                                        isAnimationActive={false}
+                                                        connectNulls={false}
+                                                    />
+                                                )}
                                                 <Line type="step" dataKey="threshold" stroke="#ef4444" strokeDasharray="5 5" dot={false} name="Threshold" isAnimationActive={false} />
                                             </LineChart>
                                         </ResponsiveContainer>
