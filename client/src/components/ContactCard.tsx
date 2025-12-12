@@ -875,10 +875,24 @@ export function ContactCard({
                                         )}
                                     </div>
                                     <div className={clsx(
-                                        "absolute bottom-2 right-2 w-6 h-6 rounded-full border-2 border-white",
+                                        "absolute bottom-2 right-2 w-6 h-6 rounded-full border-2 border-white transition-colors duration-300",
                                         currentStatus === 'OFFLINE' ? "bg-red-500" :
-                                            currentStatus.includes('Online') ? "bg-green-500" : "bg-gray-400"
-                                    )} />
+                                            currentStatus.includes('Online') ? "bg-green-500" :
+                                                currentStatus === 'Standby' ? "bg-yellow-500" :
+                                                    (calibrationProgress?.warmupRemaining && calibrationProgress.warmupRemaining > 0) ? "bg-purple-500" :
+                                                        (currentStatus.includes('Calibrating') || calibrationProgress) ? "bg-blue-500" :
+                                                            "bg-gray-400"
+                                    )}>
+                                        {/* Pulsing ring for online/warmup/calibration */}
+                                        {(currentStatus.includes('Online') || calibrationProgress || currentStatus.includes('Calibrating')) && (
+                                            <span className={clsx(
+                                                "absolute inset-0 rounded-full animate-ping opacity-75",
+                                                currentStatus.includes('Online') ? "bg-green-400" :
+                                                    (calibrationProgress?.warmupRemaining && calibrationProgress.warmupRemaining > 0) ? "bg-purple-400" :
+                                                        "bg-blue-400"
+                                            )} />
+                                        )}
+                                    </div>
                                 </div>
 
                                 <div className="flex items-center gap-2 mb-4">
