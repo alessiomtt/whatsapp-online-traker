@@ -262,11 +262,14 @@ export function deleteSession(jid: string): void {
 export function logEvent(data: LogEventData): void {
     const database = getDatabase();
 
+    // Use ISO timestamp with local timezone instead of SQLite's UTC CURRENT_TIMESTAMP
+    const timestamp = new Date().toISOString();
+
     database.prepare(`
         INSERT INTO activity_logs (
             session_id, jid, event_type, rtt_value, avg_rtt, 
-            median_rtt, threshold, state, device_jid
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            median_rtt, threshold, state, device_jid, timestamp
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
         data.sessionId,
         data.jid,
@@ -276,14 +279,15 @@ export function logEvent(data: LogEventData): void {
         data.medianRtt ?? null,
         data.threshold ?? null,
         data.state ?? null,
-        data.deviceJid ?? null
+        data.deviceJid ?? null,
+        timestamp
     );
 }
 
 /**
  * Get logs for a session
  */
-export function getSessionLogs(jid: string, limit: number = 100): ActivityLog[] {
+export function getSessionLogs(jid: string, limit: number = 100, offset: number = 0): ActivityLog[] {
     const database = getDatabase();
 
     return database.prepare(`
@@ -291,8 +295,54 @@ export function getSessionLogs(jid: string, limit: number = 100): ActivityLog[] 
         INNER JOIN sessions s ON al.session_id = s.id
         WHERE s.jid = ?
         ORDER BY al.timestamp DESC
-        LIMIT ?
-    `).all(jid, limit) as ActivityLog[];
+        LIMIT ? OFFSET ?
+    `).all(jid, limit, offset) as ActivityLog[];
+}
+
+/**
+ * Get total count of session logs for pagination
+ */
+export function getSessionLogsCount(jid: string): number {
+    const database = getDatabase();
+
+    const result = database.prepare(`
+        SELECT COUNT(*) as count FROM activity_logs al
+        INNER JOIN sessions s ON al.session_id = s.id
+        WHERE s.jid = ?
+    `).get(jid) as { count: number };
+
+    return result?.count || 0;
+}
+/**
+ * Get activity events (state changes only, not RTT measurements) for a session
+ * Returns events like: start, stop, online, offline, standby, calibrating
+ * Supports pagination with offset
+ */
+export function getActivityEvents(jid: string, limit: number = 100, offset: number = 0): ActivityLog[] {
+    const database = getDatabase();
+
+    return database.prepare(`
+        SELECT al.* FROM activity_logs al
+        INNER JOIN sessions s ON al.session_id = s.id
+        WHERE s.jid = ? AND al.event_type != 'rtt'
+        ORDER BY al.timestamp DESC
+        LIMIT ? OFFSET ?
+    `).all(jid, limit, offset) as ActivityLog[];
+}
+
+/**
+ * Get total count of activity events for a session (for pagination)
+ */
+export function getActivityEventsCount(jid: string): number {
+    const database = getDatabase();
+
+    const result = database.prepare(`
+        SELECT COUNT(*) as count FROM activity_logs al
+        INNER JOIN sessions s ON al.session_id = s.id
+        WHERE s.jid = ? AND al.event_type != 'rtt'
+    `).get(jid) as { count: number };
+
+    return result?.count || 0;
 }
 
 /**

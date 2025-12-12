@@ -1,8 +1,9 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceArea } from 'recharts';
 import { Square, Activity, Wifi, Smartphone, Monitor, ChevronDown, ChevronUp, Edit2, Zap, Check, X, History, ArrowLeft, Play, AlertCircle, Archive, RotateCcw, CheckCircle, FileSpreadsheet, FileText } from 'lucide-react';
 import clsx from 'clsx';
 import { exportToExcel, exportToPDF } from '../utils/exportUtils';
+import { socket } from '../App';
 
 interface TrackerData {
     rtt: number;
@@ -34,6 +35,16 @@ interface ContactCardProps {
     onArchive: () => void;
     privacyMode?: boolean;
     onRename?: (jid: string, newName: string) => void;
+}
+
+// Interface for DB activity events
+interface DBActivityEvent {
+    id: number;
+    session_id: number;
+    jid: string;
+    event_type: string;
+    state: string | null;
+    timestamp: string;
 }
 
 export function ContactCard({
@@ -77,85 +88,115 @@ export function ContactCard({
     const blurredNumber = privacyMode ? displayNumber.replace(/\d/g, '•') : displayNumber;
     const isCustomName = displayNumber !== jid.split('@')[0];
 
-    // Generate activity log from data transitions
+    // Activity log from database
     interface LogEvent {
         type: 'start' | 'stop' | 'restart' | 'calibration' | 'calibration_end' | 'online' | 'offline' | 'standby';
         timestamp: number;
         message: string;
     }
 
-    const activityLog = useMemo(() => {
-        const events: LogEvent[] = [];
+    const [dbActivityEvents, setDbActivityEvents] = useState<DBActivityEvent[]>([]);
+    const [isLoadingEvents, setIsLoadingEvents] = useState(false);
+    const [hasMoreEvents, setHasMoreEvents] = useState(false);
+    const [totalEvents, setTotalEvents] = useState(0);
+    const EVENTS_PER_PAGE = 100;
 
-        if (data.length > 0) {
-            // First entry = start monitoring
-            events.push({
-                type: 'start',
-                timestamp: data[0].timestamp,
-                message: 'Monitoraggio avviato'
-            });
+    // Load activity events from database when log is opened
+    const loadActivityEvents = useCallback((offset: number = 0) => {
+        setIsLoadingEvents(true);
+        socket.emit('get-activity-events', { jid, limit: EVENTS_PER_PAGE, offset });
+    }, [jid]);
+
+    // Load more events (pagination)
+    const loadMoreEvents = useCallback(() => {
+        if (!isLoadingEvents && hasMoreEvents) {
+            loadActivityEvents(dbActivityEvents.length);
         }
+    }, [isLoadingEvents, hasMoreEvents, dbActivityEvents.length, loadActivityEvents]);
 
-        let prevState = '';
-        for (let i = 0; i < data.length; i++) {
-            const entry = data[i];
-            const state = entry.state.toLowerCase();
+    // Reset and reload events when log is opened
+    useEffect(() => {
+        if (showLog) {
+            // Always reload from beginning when opening log
+            setDbActivityEvents([]);
+            setHasMoreEvents(false);
+            setTotalEvents(0);
+            loadActivityEvents(0);
+        }
+    }, [showLog, loadActivityEvents]);
 
-            if (state !== prevState) {
-                if (state.includes('calibrat')) {
-                    if (prevState && !prevState.includes('calibrat')) {
-                        events.push({
-                            type: 'calibration',
-                            timestamp: entry.timestamp,
-                            message: 'Calibrazione in corso'
-                        });
-                    }
-                } else if (prevState.includes('calibrat')) {
-                    events.push({
-                        type: 'calibration_end',
-                        timestamp: entry.timestamp,
-                        message: 'Calibrazione completata'
-                    });
+    useEffect(() => {
+        const handleActivityEvents = (data: {
+            jid: string;
+            events: DBActivityEvent[];
+            total: number;
+            offset: number;
+            hasMore: boolean;
+        }) => {
+            if (data.jid === jid) {
+                if (data.offset === 0) {
+                    // First page - replace all events
+                    setDbActivityEvents(data.events);
+                } else {
+                    // Subsequent pages - append events
+                    setDbActivityEvents(prev => [...prev, ...data.events]);
                 }
-
-                // Handle state transitions
-                if (state.includes('online')) {
-                    events.push({
-                        type: 'online',
-                        timestamp: entry.timestamp,
-                        message: 'Online'
-                    });
-                } else if (state === 'standby') {
-                    events.push({
-                        type: 'standby',
-                        timestamp: entry.timestamp,
-                        message: 'Standby'
-                    });
-                } else if (state === 'offline') {
-                    events.push({
-                        type: 'offline',
-                        timestamp: entry.timestamp,
-                        message: 'Offline'
-                    });
-                } else if (state === 'stop') {
-                    events.push({
-                        type: 'stop',
-                        timestamp: entry.timestamp,
-                        message: 'Monitoraggio interrotto'
-                    });
-                } else if (state === 'start') {
-                    events.push({
-                        type: 'restart',
-                        timestamp: entry.timestamp,
-                        message: 'Monitoraggio riavviato'
-                    });
-                }
-                prevState = state;
+                setHasMoreEvents(data.hasMore);
+                setTotalEvents(data.total);
+                setIsLoadingEvents(false);
             }
-        }
+        };
 
-        return events.reverse(); // Most recent first
-    }, [data]);
+        socket.on('activity-events', handleActivityEvents);
+        return () => {
+            socket.off('activity-events', handleActivityEvents);
+        };
+    }, [jid]);
+
+    // Convert DB events to display format
+    const activityLog = useMemo((): LogEvent[] => {
+        if (dbActivityEvents.length === 0) return [];
+
+        const getEventMessage = (eventType: string): string => {
+            switch (eventType) {
+                case 'start': return 'Monitoraggio avviato';
+                case 'stop': return 'Monitoraggio interrotto';
+                case 'online': return 'Online';
+                case 'offline': return 'Offline';
+                case 'standby': return 'Standby';
+                case 'calibrating': return 'Calibrazione in corso';
+                default: return eventType;
+            }
+        };
+
+        const getEventType = (eventType: string): LogEvent['type'] => {
+            switch (eventType) {
+                case 'start': return 'start';
+                case 'stop': return 'stop';
+                case 'online': return 'online';
+                case 'offline': return 'offline';
+                case 'standby': return 'standby';
+                case 'calibrating': return 'calibration';
+                default: return 'online';
+            }
+        };
+
+        return dbActivityEvents.map(event => {
+            // SQLite stores CURRENT_TIMESTAMP in UTC as "YYYY-MM-DD HH:MM:SS" (no timezone indicator)
+            // We need to parse it correctly as UTC
+            let timestamp = event.timestamp;
+            // If it doesn't have timezone indicator (Z or +/-), it's SQLite UTC format
+            if (!timestamp.includes('Z') && !timestamp.includes('+') && !timestamp.includes('T')) {
+                // Convert "YYYY-MM-DD HH:MM:SS" to ISO format with UTC indicator
+                timestamp = timestamp.replace(' ', 'T') + 'Z';
+            }
+            return {
+                type: getEventType(event.event_type),
+                timestamp: new Date(timestamp).getTime(),
+                message: getEventMessage(event.event_type)
+            };
+        });
+    }, [dbActivityEvents]);
 
     // Filter data to show only last 5 minutes for smooth scrolling effect
     const CHART_TIME_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
@@ -543,10 +584,17 @@ export function ContactCard({
                         /* Activity Log View */
                         <div className="space-y-4">
                             <div className="flex items-center justify-between mb-4">
-                                <h4 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                                    <History size={20} className="text-blue-600" />
-                                    Storico Attività
-                                </h4>
+                                <div className="flex items-center gap-3">
+                                    <h4 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                                        <History size={20} className="text-blue-600" />
+                                        Storico Attività
+                                    </h4>
+                                    {totalEvents > 0 && (
+                                        <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
+                                            {activityLog.length}/{totalEvents} eventi
+                                        </span>
+                                    )}
+                                </div>
                                 <div className="flex items-center gap-2">
                                     <>
                                         <button
@@ -680,6 +728,29 @@ export function ContactCard({
                                         })}
                                     </div>
                                 )}
+
+                                {/* Load More Button */}
+                                {hasMoreEvents && (
+                                    <div className="mt-4 text-center">
+                                        <button
+                                            onClick={loadMoreEvents}
+                                            disabled={isLoadingEvents}
+                                            className="px-4 py-2 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+                                        >
+                                            {isLoadingEvents ? 'Caricamento...' : `Carica altri eventi (${activityLog.length}/${totalEvents})`}
+                                        </button>
+                                    </div>
+                                )}
+
+                                {/* All events loaded indicator */}
+                                {!hasMoreEvents && activityLog.length > 0 && (
+                                    <div className="mt-4 mb-2 text-center text-xs text-gray-400">
+                                        Tutti gli eventi caricati ({activityLog.length})
+                                    </div>
+                                )}
+
+                                {/* Spacer for bottom padding */}
+                                {hasMoreEvents && <div className="h-2" />}
                             </div>
                         </div>
                     ) : (

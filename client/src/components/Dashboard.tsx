@@ -45,6 +45,7 @@ export function Dashboard({ privacyMode }: DashboardProps) {
     const [contacts, setContacts] = useState<Map<string, ContactInfo>>(new Map());
     const [archivedContacts, setArchivedContacts] = useState<ContactInfo[]>([]);
     const [archiveLogs, setArchiveLogs] = useState<Map<string, TrackerData[]>>(new Map());
+    const [archiveLogsMeta, setArchiveLogsMeta] = useState<Map<string, { total: number; hasMore: boolean; loading: boolean }>>(new Map());
     const [showArchive, setShowArchive] = useState(false);
     const [expandedArchiveLogs, setExpandedArchiveLogs] = useState<Set<string>>(new Set());
     const [confirmDeleteJid, setConfirmDeleteJid] = useState<string | null>(null);
@@ -103,7 +104,12 @@ export function Dashboard({ privacyMode }: DashboardProps) {
                             state: data.devices.find((d: DeviceInfo) => d.state.includes('Online'))?.state || data.devices[0].state,
                             timestamp: Date.now(),
                         };
-                        updatedContact.data = [...updatedContact.data, newDataPoint];
+                        // Add new point and limit to 1000 points to prevent memory issues
+                        const MAX_DATA_POINTS = 1000;
+                        const newData = [...updatedContact.data, newDataPoint];
+                        updatedContact.data = newData.length > MAX_DATA_POINTS
+                            ? newData.slice(-MAX_DATA_POINTS)
+                            : newData;
                     }
 
                     next.set(jid, updatedContact);
@@ -233,27 +239,110 @@ export function Dashboard({ privacyMode }: DashboardProps) {
             setConfirmDeleteJid(null);
         }
 
-        function onSessionLogs(data: { jid: string, logs: any[] }) {
+        function onSessionLogs(data: {
+            jid: string;
+            logs: any[];
+            total: number;
+            offset: number;
+            hasMore: boolean;
+        }) {
             // Convert database logs to TrackerData format
             // Include ALL event types: rtt, online, offline, standby, stop, start, restart
-            const trackerData: TrackerData[] = data.logs
+            const newTrackerData: TrackerData[] = data.logs
                 .filter(log => {
                     const validTypes = ['rtt', 'online', 'offline', 'standby', 'stop', 'start'];
                     return validTypes.includes(log.event_type);
                 })
-                .map(log => ({
-                    rtt: log.rtt_value || 0,
-                    avg: log.avg_rtt || 0,
-                    median: log.median_rtt || 0,
-                    threshold: log.threshold || 0,
-                    state: log.state || log.event_type,
-                    timestamp: new Date(log.timestamp).getTime()
-                }))
+                .map(log => {
+                    // Fix timezone: SQLite stores UTC without indicator
+                    let timestamp = log.timestamp;
+                    if (!timestamp.includes('Z') && !timestamp.includes('+') && !timestamp.includes('T')) {
+                        timestamp = timestamp.replace(' ', 'T') + 'Z';
+                    }
+                    return {
+                        rtt: log.rtt_value || 0,
+                        avg: log.avg_rtt || 0,
+                        median: log.median_rtt || 0,
+                        threshold: log.threshold || 0,
+                        state: log.state || log.event_type,
+                        timestamp: new Date(timestamp).getTime()
+                    };
+                })
                 .reverse(); // Oldest first for display
 
             setArchiveLogs(prev => {
                 const next = new Map(prev);
-                next.set(data.jid, trackerData);
+                if (data.offset === 0) {
+                    // First page - replace all
+                    next.set(data.jid, newTrackerData);
+                } else {
+                    // Subsequent pages - prepend (since we reversed and they're older)
+                    const existing = prev.get(data.jid) || [];
+                    next.set(data.jid, [...newTrackerData, ...existing]);
+                }
+                return next;
+            });
+
+            // Update metadata
+            setArchiveLogsMeta(prev => {
+                const next = new Map(prev);
+                next.set(data.jid, {
+                    total: data.total,
+                    hasMore: data.hasMore,
+                    loading: false
+                });
+                return next;
+            });
+        }
+
+        // Handle activity events (state changes only) - used for archive logs
+        function onActivityEvents(data: {
+            jid: string;
+            events: any[];
+            total: number;
+            offset: number;
+            hasMore: boolean;
+        }) {
+            // Convert database events to TrackerData format for LogView
+            const newTrackerData: TrackerData[] = data.events
+                .map(event => {
+                    // Fix timezone: SQLite stores UTC without indicator
+                    let timestamp = event.timestamp;
+                    if (!timestamp.includes('Z') && !timestamp.includes('+') && !timestamp.includes('T')) {
+                        timestamp = timestamp.replace(' ', 'T') + 'Z';
+                    }
+                    return {
+                        rtt: 0,
+                        avg: 0,
+                        median: 0,
+                        threshold: 0,
+                        state: event.event_type, // online, offline, standby, start, stop
+                        timestamp: new Date(timestamp).getTime()
+                    };
+                })
+                .reverse(); // Oldest first for display
+
+            setArchiveLogs(prev => {
+                const next = new Map(prev);
+                if (data.offset === 0) {
+                    // First page - replace all
+                    next.set(data.jid, newTrackerData);
+                } else {
+                    // Subsequent pages - prepend (since we reversed and they're older)
+                    const existing = prev.get(data.jid) || [];
+                    next.set(data.jid, [...newTrackerData, ...existing]);
+                }
+                return next;
+            });
+
+            // Update metadata
+            setArchiveLogsMeta(prev => {
+                const next = new Map(prev);
+                next.set(data.jid, {
+                    total: data.total,
+                    hasMore: data.hasMore,
+                    loading: false
+                });
                 return next;
             });
         }
@@ -334,6 +423,7 @@ export function Dashboard({ privacyMode }: DashboardProps) {
         socket.on('contact-restored', onContactRestored);
         socket.on('contact-deleted', onContactDeleted);
         socket.on('session-logs', onSessionLogs);
+        socket.on('activity-events', onActivityEvents);
         socket.on('contact-status', onContactStatus);
         socket.on('stopped-contacts', onStoppedContacts);
         socket.on('database-cleared', onDatabaseCleared);
@@ -350,6 +440,7 @@ export function Dashboard({ privacyMode }: DashboardProps) {
             socket.off('contact-restored', onContactRestored);
             socket.off('contact-deleted', onContactDeleted);
             socket.off('session-logs', onSessionLogs);
+            socket.off('activity-events', onActivityEvents);
             socket.off('contact-status', onContactStatus);
             socket.off('stopped-contacts', onStoppedContacts);
             socket.off('database-cleared', onDatabaseCleared);
@@ -486,6 +577,8 @@ export function Dashboard({ privacyMode }: DashboardProps) {
         socket.emit('update-name', { jid, name: newName });
     };
 
+    const ARCHIVE_LOGS_PER_PAGE = 100;
+
     const toggleArchiveLog = (jid: string) => {
         setExpandedArchiveLogs(prev => {
             const next = new Set(prev);
@@ -493,11 +586,40 @@ export function Dashboard({ privacyMode }: DashboardProps) {
                 next.delete(jid);
             } else {
                 next.add(jid);
-                // Fetch logs from server when expanding
-                socket.emit('get-session-logs', { jid, limit: 500 });
+                // Reset and fetch fresh logs from server when expanding
+                setArchiveLogs(prev => {
+                    const next = new Map(prev);
+                    next.delete(jid);
+                    return next;
+                });
+                setArchiveLogsMeta(prev => {
+                    const next = new Map(prev);
+                    next.set(jid, { total: 0, hasMore: false, loading: true });
+                    return next;
+                });
+                socket.emit('get-activity-events', { jid, limit: ARCHIVE_LOGS_PER_PAGE, offset: 0 });
             }
             return next;
         });
+    };
+
+    const loadMoreArchiveLogs = (jid: string) => {
+        const meta = archiveLogsMeta.get(jid);
+        const currentLogs = archiveLogs.get(jid) || [];
+        if (meta && meta.hasMore && !meta.loading) {
+            // Set loading state
+            setArchiveLogsMeta(prev => {
+                const next = new Map(prev);
+                next.set(jid, { ...meta, loading: true });
+                return next;
+            });
+            // Request next page - offset is based on total loaded so far
+            socket.emit('get-activity-events', {
+                jid,
+                limit: ARCHIVE_LOGS_PER_PAGE,
+                offset: currentLogs.length
+            });
+        }
     };
 
     // Archive View
@@ -589,12 +711,46 @@ export function Dashboard({ privacyMode }: DashboardProps) {
                                 {expandedArchiveLogs.has(contact.jid) && (
                                     <div className="p-4 border-t border-gray-100 bg-white">
                                         {archiveLogs.has(contact.jid) ? (
-                                            <LogView
-                                                data={archiveLogs.get(contact.jid) || []}
-                                                contactName={contact.displayNumber !== contact.jid.split('@')[0] ? contact.displayNumber : undefined}
-                                                contactNumber={contact.jid.split('@')[0]}
-                                                jid={contact.jid}
-                                            />
+                                            <>
+                                                {/* Header with count */}
+                                                {archiveLogsMeta.get(contact.jid) && (
+                                                    <div className="flex items-center justify-between mb-3">
+                                                        <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
+                                                            {(archiveLogs.get(contact.jid) || []).length}/{archiveLogsMeta.get(contact.jid)?.total || 0} eventi
+                                                        </span>
+                                                    </div>
+                                                )}
+
+                                                <LogView
+                                                    data={archiveLogs.get(contact.jid) || []}
+                                                    contactName={contact.displayNumber !== contact.jid.split('@')[0] ? contact.displayNumber : undefined}
+                                                    contactNumber={contact.jid.split('@')[0]}
+                                                    jid={contact.jid}
+                                                />
+
+                                                {/* Load More Button */}
+                                                {archiveLogsMeta.get(contact.jid)?.hasMore && (
+                                                    <div className="mt-4 text-center">
+                                                        <button
+                                                            onClick={() => loadMoreArchiveLogs(contact.jid)}
+                                                            disabled={archiveLogsMeta.get(contact.jid)?.loading}
+                                                            className="px-4 py-2 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+                                                        >
+                                                            {archiveLogsMeta.get(contact.jid)?.loading
+                                                                ? 'Caricamento...'
+                                                                : `Carica altri eventi (${(archiveLogs.get(contact.jid) || []).length}/${archiveLogsMeta.get(contact.jid)?.total})`
+                                                            }
+                                                        </button>
+                                                    </div>
+                                                )}
+
+                                                {/* All loaded indicator */}
+                                                {!archiveLogsMeta.get(contact.jid)?.hasMore && (archiveLogs.get(contact.jid) || []).length > 0 && (
+                                                    <div className="mt-4 mb-2 text-center text-xs text-gray-400">
+                                                        Tutti gli eventi caricati ({(archiveLogs.get(contact.jid) || []).length})
+                                                    </div>
+                                                )}
+                                            </>
                                         ) : (
                                             <div className="text-center py-4 text-gray-500">
                                                 <div className="animate-spin w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full mx-auto mb-2"></div>

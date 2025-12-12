@@ -465,9 +465,36 @@ io.on('connection', (socket) => {
     });
 
 
-    socket.on('get-session-logs', (data: { jid: string, limit?: number }) => {
-        const logs = db.getSessionLogs(data.jid, data.limit || 100);
-        socket.emit('session-logs', { jid: data.jid, logs });
+    // Get session logs (all events including RTT) - used for archive
+    // Supports pagination with offset
+    socket.on('get-session-logs', (data: { jid: string, limit?: number, offset?: number }) => {
+        const limit = data.limit || 100;
+        const offset = data.offset || 0;
+        const logs = db.getSessionLogs(data.jid, limit, offset);
+        const total = db.getSessionLogsCount(data.jid);
+        socket.emit('session-logs', {
+            jid: data.jid,
+            logs,
+            total,
+            offset,
+            hasMore: offset + logs.length < total
+        });
+    });
+
+    // Get activity events (state changes only, not RTT measurements) for activity log display
+    // Supports pagination with offset
+    socket.on('get-activity-events', (data: { jid: string, limit?: number, offset?: number }) => {
+        const limit = data.limit || 100;
+        const offset = data.offset || 0;
+        const events = db.getActivityEvents(data.jid, limit, offset);
+        const total = db.getActivityEventsCount(data.jid);
+        socket.emit('activity-events', {
+            jid: data.jid,
+            events,
+            total,
+            offset,
+            hasMore: offset + events.length < total
+        });
     });
 
     socket.on('update-name', (data: { jid: string, name: string }) => {
