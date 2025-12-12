@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { Login } from './components/Login';
 import { Dashboard } from './components/Dashboard';
+import { ComparePage } from './components/ComparePage';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { ArrowLeft, Lock, AlertCircle, Shield, Trash2, LogOut, Eye, EyeOff, Settings, RotateCcw } from 'lucide-react';
 
@@ -28,6 +29,7 @@ function App() {
 
     // Admin panel state
     const [showAdminPanel, setShowAdminPanel] = useState(false);
+    const [showComparePage, setShowComparePage] = useState(false);
     const [privacyMode, setPrivacyMode] = useState(false);
     const [showPasswordDialog, setShowPasswordDialog] = useState(false);
     const [passwordInput, setPasswordInput] = useState('');
@@ -348,8 +350,8 @@ function App() {
                     {/* Success/Error Messages */}
                     {configMessage && (
                         <div className={`p-4 rounded-lg flex items-center gap-2 ${configMessage.type === 'success'
-                                ? 'bg-green-50 border border-green-200 text-green-800'
-                                : 'bg-red-50 border border-red-200 text-red-800'
+                            ? 'bg-green-50 border border-green-200 text-green-800'
+                            : 'bg-red-50 border border-red-200 text-red-800'
                             }`}>
                             {configMessage.type === 'success' ? (
                                 <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
@@ -675,10 +677,12 @@ function App() {
                     <main>
                         {showAdminPanel ? (
                             <AdminPanel />
+                        ) : showComparePage ? (
+                            <ComparePage onBack={() => setShowComparePage(false)} privacyMode={privacyMode} />
                         ) : !isWhatsAppReady ? (
                             <Login />
                         ) : (
-                            <Dashboard privacyMode={privacyMode} />
+                            <Dashboard privacyMode={privacyMode} onOpenCompare={() => setShowComparePage(true)} />
                         )}
                     </main>
 

@@ -447,6 +447,59 @@ export function clearAllData(): void {
 }
 
 /**
+ * Get all sessions (active, stopped, and archived) for comparison selection
+ * Returns a unified list of all contacts that can be compared
+ */
+export function getAllSessionsForComparison(): Session[] {
+    const database = getDatabase();
+    return database.prepare(`
+        SELECT * FROM sessions 
+        ORDER BY 
+            CASE 
+                WHEN is_active = 1 THEN 0 
+                WHEN is_archived = 0 THEN 1 
+                ELSE 2 
+            END,
+            started_at DESC
+    `).all() as Session[];
+}
+
+/**
+ * Get activity events for a JID within a specific date range
+ * Used for comparison feature to fetch events within selected time period
+ */
+export function getActivityEventsInRange(
+    jid: string,
+    startDate: string,
+    endDate: string
+): ActivityLog[] {
+    const database = getDatabase();
+    return database.prepare(`
+        SELECT al.* FROM activity_logs al
+        INNER JOIN sessions s ON al.session_id = s.id
+        WHERE s.jid = ? 
+          AND al.event_type IN ('online', 'offline', 'standby', 'start', 'stop', 'calibrating', 'calibration_end')
+          AND al.timestamp >= ?
+          AND al.timestamp <= ?
+        ORDER BY al.timestamp ASC
+    `).all(jid, startDate, endDate) as ActivityLog[];
+}
+
+/**
+ * Get all activity events for a JID (no date limit) - for full history comparison
+ */
+export function getActivityEventsForComparison(jid: string): ActivityLog[] {
+    const database = getDatabase();
+    return database.prepare(`
+        SELECT al.* FROM activity_logs al
+        INNER JOIN sessions s ON al.session_id = s.id
+        WHERE s.jid = ? 
+          AND al.event_type IN ('online', 'offline', 'standby', 'start', 'stop', 'calibrating', 'calibration_end')
+        ORDER BY al.timestamp ASC
+    `).all(jid) as ActivityLog[];
+}
+
+/**
  * Close the database connection
  */
 export function closeDatabase(): void {

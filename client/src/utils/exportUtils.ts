@@ -419,3 +419,255 @@ export async function exportToPDF(data: ExportData): Promise<void> {
     const filename = `report_${displayName.replace(/[^a-zA-Z0-9]/g, '_')}_${formatDate(Date.now()).replace(/\//g, '-')}.pdf`;
     doc.save(filename);
 }
+
+// ============================================
+// COMPARISON EXPORT FUNCTIONS
+// ============================================
+
+interface ContactForComparison {
+    jid: string;
+    phoneNumber: string;
+    customName: string | null;
+    profilePic: string | null;
+}
+
+interface OverlapPeriod {
+    start: string;
+    end: string;
+    durationMs: number;
+}
+
+interface ComparisonStatistics {
+    totalOnline1Ms: number;
+    totalOnline2Ms: number;
+    totalOverlapMs: number;
+    overlapPercentage: number;
+    overlapCount: number;
+    mostCommonOverlapHour: number;
+}
+
+interface ComparisonData {
+    jid1: string;
+    jid2: string;
+    overlaps: OverlapPeriod[];
+    statistics: ComparisonStatistics;
+}
+
+// Format milliseconds to human readable duration
+function formatDurationMs(ms: number): string {
+    if (ms < 1000) return '0s';
+    const seconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+
+    if (days > 0) return `${days}g ${hours % 24}h ${minutes % 60}m`;
+    if (hours > 0) return `${hours}h ${minutes % 60}m`;
+    if (minutes > 0) return `${minutes}m ${seconds % 60}s`;
+    return `${seconds}s`;
+}
+
+/**
+ * Export comparison data to Excel format
+ */
+export function exportComparisonToExcel(
+    data: ComparisonData,
+    contact1: ContactForComparison,
+    contact2: ContactForComparison
+): void {
+    const wb = XLSX.utils.book_new();
+
+    const name1 = contact1.customName || contact1.phoneNumber;
+    const name2 = contact2.customName || contact2.phoneNumber;
+
+    // Prepare header rows
+    const headerRows = [
+        ['STEALTH WP TRACKER - Report Comparazione'],
+        [''],
+        [`Contatto 1: ${name1}`],
+        [`Contatto 2: ${name2}`],
+        [`Data Export: ${formatDate(Date.now())} ${formatTime(Date.now())}`],
+        [''],
+        ['STATISTICHE'],
+        [`Tempo Overlap Totale: ${formatDurationMs(data.statistics.totalOverlapMs)}`],
+        [`Percentuale Sovrapposizione: ${data.statistics.overlapPercentage}%`],
+        [`Numero Coincidenze: ${data.statistics.overlapCount}`],
+        [`Fascia Oraria Comune: ${data.statistics.mostCommonOverlapHour}:00`],
+        [`Tempo Online ${name1}: ${formatDurationMs(data.statistics.totalOnline1Ms)}`],
+        [`Tempo Online ${name2}: ${formatDurationMs(data.statistics.totalOnline2Ms)}`],
+        [''],
+        ['SOVRAPPOSIZIONI'],
+        ['Data', 'Ora Inizio', 'Ora Fine', 'Durata']
+    ];
+
+    // Prepare overlap data rows
+    const dataRows = data.overlaps.map(overlap => [
+        new Date(overlap.start).toLocaleDateString('it-IT'),
+        new Date(overlap.start).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }),
+        new Date(overlap.end).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }),
+        formatDurationMs(overlap.durationMs)
+    ]);
+
+    const allRows = [...headerRows, ...dataRows];
+    const ws = XLSX.utils.aoa_to_sheet(allRows);
+
+    ws['!cols'] = [
+        { wch: 15 },
+        { wch: 12 },
+        { wch: 12 },
+        { wch: 15 },
+    ];
+
+    XLSX.utils.book_append_sheet(wb, ws, 'Comparazione');
+
+    const filename = `comparazione_${name1.replace(/[^a-zA-Z0-9]/g, '_')}_vs_${name2.replace(/[^a-zA-Z0-9]/g, '_')}_${formatDate(Date.now()).replace(/\//g, '-')}.xlsx`;
+    XLSX.writeFile(wb, filename);
+}
+
+/**
+ * Export comparison data to PDF format
+ */
+export async function exportComparisonToPDF(
+    data: ComparisonData,
+    contact1: ContactForComparison,
+    contact2: ContactForComparison
+): Promise<void> {
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.getWidth();
+
+    const name1 = contact1.customName || contact1.phoneNumber;
+    const name2 = contact2.customName || contact2.phoneNumber;
+
+    let yPos = 20;
+
+    // === HEADER ===
+    doc.setFillColor(16, 185, 129); // emerald-500
+    doc.rect(0, 0, pageWidth, 35, 'F');
+
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(24);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Stealth WP Tracker', 15, 18);
+
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Report Comparazione Contatti', 15, 28);
+
+    yPos = 45;
+
+    // === CONTACTS INFO ===
+    doc.setFillColor(236, 253, 245); // emerald-50
+    doc.roundedRect(10, yPos, pageWidth - 20, 25, 3, 3, 'F');
+    doc.setDrawColor(16, 185, 129);
+    doc.roundedRect(10, yPos, pageWidth - 20, 25, 3, 3, 'S');
+
+    doc.setTextColor(6, 78, 59); // emerald-900
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Contatti Confrontati', 15, yPos + 10);
+
+    doc.setTextColor(0, 0, 0);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    doc.text(`${name1}  vs  ${name2}`, 15, yPos + 20);
+
+    yPos += 35;
+
+    // === STATISTICS ===
+    doc.setFillColor(236, 253, 245);
+    doc.roundedRect(10, yPos, pageWidth - 20, 45, 3, 3, 'F');
+    doc.setDrawColor(16, 185, 129);
+    doc.roundedRect(10, yPos, pageWidth - 20, 45, 3, 3, 'S');
+
+    doc.setTextColor(6, 78, 59);
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Statistiche Sovrapposizione', 15, yPos + 10);
+
+    doc.setTextColor(0, 0, 0);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+
+    doc.text(`Tempo Overlap Totale: ${formatDurationMs(data.statistics.totalOverlapMs)}`, 15, yPos + 22);
+    doc.text(`Percentuale Sovrapposizione: ${data.statistics.overlapPercentage}%`, 15, yPos + 30);
+    doc.text(`Numero Coincidenze: ${data.statistics.overlapCount}`, 15, yPos + 38);
+
+    const rightCol = 120;
+    doc.text(`Fascia Oraria Comune: ${data.statistics.mostCommonOverlapHour}:00`, rightCol, yPos + 22);
+    doc.text(`Online ${name1}: ${formatDurationMs(data.statistics.totalOnline1Ms)}`, rightCol, yPos + 30);
+    doc.text(`Online ${name2}: ${formatDurationMs(data.statistics.totalOnline2Ms)}`, rightCol, yPos + 38);
+
+    yPos += 55;
+
+    // === OVERLAPS TABLE ===
+    doc.setTextColor(6, 78, 59);
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Dettaglio Sovrapposizioni', 15, yPos);
+
+    yPos += 5;
+
+    const tableData = data.overlaps.map(overlap => [
+        new Date(overlap.start).toLocaleDateString('it-IT'),
+        new Date(overlap.start).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }),
+        new Date(overlap.end).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }),
+        formatDurationMs(overlap.durationMs)
+    ]);
+
+    if (tableData.length === 0) {
+        doc.setTextColor(117, 117, 117);
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'italic');
+        doc.text('Nessuna sovrapposizione trovata nel periodo selezionato', 15, yPos + 10);
+    } else {
+        autoTable(doc, {
+            startY: yPos,
+            head: [['Data', 'Ora Inizio', 'Ora Fine', 'Durata']],
+            body: tableData,
+            theme: 'grid',
+            headStyles: {
+                fillColor: [16, 185, 129],
+                textColor: [255, 255, 255],
+                fontStyle: 'bold',
+                fontSize: 10,
+            },
+            bodyStyles: {
+                fontSize: 9,
+            },
+            columnStyles: {
+                0: { cellWidth: 35 },
+                1: { cellWidth: 30 },
+                2: { cellWidth: 30 },
+                3: { cellWidth: 35 },
+            },
+            alternateRowStyles: {
+                fillColor: [236, 253, 245],
+            },
+            margin: { left: 10, right: 10 },
+        });
+    }
+
+    // === FOOTER ===
+    const pageCount = doc.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        const pageHeight = doc.internal.pageSize.getHeight();
+
+        doc.setDrawColor(16, 185, 129);
+        doc.setLineWidth(0.5);
+        doc.line(10, pageHeight - 15, pageWidth - 10, pageHeight - 15);
+
+        doc.setTextColor(117, 117, 117);
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'normal');
+        doc.text(
+            `Generato da Stealth WP Tracker • ${formatDate(Date.now())} ${formatTime(Date.now())} • Pagina ${i} di ${pageCount}`,
+            pageWidth / 2,
+            pageHeight - 8,
+            { align: 'center' }
+        );
+    }
+
+    const filename = `comparazione_${name1.replace(/[^a-zA-Z0-9]/g, '_')}_vs_${name2.replace(/[^a-zA-Z0-9]/g, '_')}_${formatDate(Date.now()).replace(/\//g, '-')}.pdf`;
+    doc.save(filename);
+}

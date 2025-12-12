@@ -497,6 +497,183 @@ io.on('connection', (socket) => {
         });
     });
 
+    // COMPARISON: Get all contacts (active, stopped, archived) for comparison selection
+    socket.on('get-contacts-for-comparison', () => {
+        console.log('[COMPARISON] Request for all contacts');
+        const sessions = db.getAllSessionsForComparison();
+        socket.emit('contacts-for-comparison', sessions.map(s => ({
+            jid: s.jid,
+            phoneNumber: s.phone_number,
+            customName: s.custom_name,
+            profilePic: s.profile_pic_url,
+            isActive: s.is_active === 1,
+            isArchived: s.is_archived === 1,
+            startedAt: s.started_at,
+            stoppedAt: s.stopped_at,
+            archivedAt: s.archived_at
+        })));
+    });
+
+    // COMPARISON: Get comparison data for two contacts
+    socket.on('get-comparison-data', (data: {
+        jid1: string,
+        jid2: string,
+        startDate?: string,
+        endDate?: string
+    }) => {
+        console.log(`[COMPARISON] Comparing ${data.jid1} vs ${data.jid2}`);
+
+        let events1: db.ActivityLog[];
+        let events2: db.ActivityLog[];
+
+        if (data.startDate && data.endDate) {
+            events1 = db.getActivityEventsInRange(data.jid1, data.startDate, data.endDate);
+            events2 = db.getActivityEventsInRange(data.jid2, data.startDate, data.endDate);
+        } else {
+            events1 = db.getActivityEventsForComparison(data.jid1);
+            events2 = db.getActivityEventsForComparison(data.jid2);
+        }
+
+        // Calculate overlaps - periods where both contacts were online
+        interface OnlinePeriod {
+            start: string;
+            end: string;
+            durationMs: number;
+        }
+
+        // Build online periods for contact 1
+        const periods1: OnlinePeriod[] = [];
+        let currentOnlineStart1: string | null = null;
+
+        for (const event of events1) {
+            if (event.event_type === 'online' && !currentOnlineStart1) {
+                currentOnlineStart1 = event.timestamp;
+            } else if ((event.event_type === 'offline' || event.event_type === 'standby' || event.event_type === 'stop') && currentOnlineStart1) {
+                periods1.push({
+                    start: currentOnlineStart1,
+                    end: event.timestamp,
+                    durationMs: new Date(event.timestamp).getTime() - new Date(currentOnlineStart1).getTime()
+                });
+                currentOnlineStart1 = null;
+            }
+        }
+        // Handle if still online
+        if (currentOnlineStart1) {
+            periods1.push({
+                start: currentOnlineStart1,
+                end: new Date().toISOString(),
+                durationMs: Date.now() - new Date(currentOnlineStart1).getTime()
+            });
+        }
+
+        // Build online periods for contact 2
+        const periods2: OnlinePeriod[] = [];
+        let currentOnlineStart2: string | null = null;
+
+        for (const event of events2) {
+            if (event.event_type === 'online' && !currentOnlineStart2) {
+                currentOnlineStart2 = event.timestamp;
+            } else if ((event.event_type === 'offline' || event.event_type === 'standby' || event.event_type === 'stop') && currentOnlineStart2) {
+                periods2.push({
+                    start: currentOnlineStart2,
+                    end: event.timestamp,
+                    durationMs: new Date(event.timestamp).getTime() - new Date(currentOnlineStart2).getTime()
+                });
+                currentOnlineStart2 = null;
+            }
+        }
+        if (currentOnlineStart2) {
+            periods2.push({
+                start: currentOnlineStart2,
+                end: new Date().toISOString(),
+                durationMs: Date.now() - new Date(currentOnlineStart2).getTime()
+            });
+        }
+
+        // Find overlapping periods
+        interface OverlapPeriod {
+            start: string;
+            end: string;
+            durationMs: number;
+        }
+
+        const overlaps: OverlapPeriod[] = [];
+
+        for (const p1 of periods1) {
+            for (const p2 of periods2) {
+                const start1 = new Date(p1.start).getTime();
+                const end1 = new Date(p1.end).getTime();
+                const start2 = new Date(p2.start).getTime();
+                const end2 = new Date(p2.end).getTime();
+
+                // Check for overlap
+                const overlapStart = Math.max(start1, start2);
+                const overlapEnd = Math.min(end1, end2);
+
+                if (overlapStart < overlapEnd) {
+                    overlaps.push({
+                        start: new Date(overlapStart).toISOString(),
+                        end: new Date(overlapEnd).toISOString(),
+                        durationMs: overlapEnd - overlapStart
+                    });
+                }
+            }
+        }
+
+        // Calculate statistics
+        const totalOnline1 = periods1.reduce((sum, p) => sum + p.durationMs, 0);
+        const totalOnline2 = periods2.reduce((sum, p) => sum + p.durationMs, 0);
+        const totalOverlap = overlaps.reduce((sum, o) => sum + o.durationMs, 0);
+        const overlapPercentage = totalOnline1 + totalOnline2 > 0
+            ? (totalOverlap * 2) / (totalOnline1 + totalOnline2) * 100
+            : 0;
+
+        // Find most common overlap hour (by total overlap time, not count)
+        const hourTotalMs: number[] = new Array(24).fill(0);
+        for (const overlap of overlaps) {
+            const start = new Date(overlap.start);
+            const end = new Date(overlap.end);
+
+            // For each hour the overlap spans, calculate how much time falls in that hour
+            let current = new Date(start);
+            while (current < end) {
+                const hourStart = new Date(current);
+                hourStart.setMinutes(0, 0, 0);
+                const hourEnd = new Date(hourStart);
+                hourEnd.setHours(hourEnd.getHours() + 1);
+
+                const overlapStart = Math.max(start.getTime(), hourStart.getTime());
+                const overlapEnd = Math.min(end.getTime(), hourEnd.getTime());
+
+                if (overlapEnd > overlapStart) {
+                    hourTotalMs[current.getHours()] += overlapEnd - overlapStart;
+                }
+
+                current.setHours(current.getHours() + 1);
+                current.setMinutes(0, 0, 0);
+            }
+        }
+        const mostCommonHour = hourTotalMs.indexOf(Math.max(...hourTotalMs));
+
+        socket.emit('comparison-data', {
+            jid1: data.jid1,
+            jid2: data.jid2,
+            events1,
+            events2,
+            periods1,
+            periods2,
+            overlaps,
+            statistics: {
+                totalOnline1Ms: totalOnline1,
+                totalOnline2Ms: totalOnline2,
+                totalOverlapMs: totalOverlap,
+                overlapPercentage: Math.round(overlapPercentage * 10) / 10,
+                overlapCount: overlaps.length,
+                mostCommonOverlapHour: mostCommonHour
+            }
+        });
+    });
+
     socket.on('update-name', (data: { jid: string, name: string }) => {
         console.log(`Request to rename ${data.jid} to ${data.name}`);
         db.updateSessionName(data.jid, data.name);

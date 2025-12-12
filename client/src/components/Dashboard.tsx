@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Disc, Archive, ArrowLeft, ArrowUp, RotateCcw, Trash2, History, FileSpreadsheet, FileText } from 'lucide-react';
+import { Disc, Archive, ArrowLeft, ArrowUp, RotateCcw, Trash2, History, FileSpreadsheet, FileText, GitCompareArrows } from 'lucide-react';
 import { socket } from '../App';
 import { ContactCard } from './ContactCard';
 import { CountrySelector } from './CountrySelector';
@@ -38,9 +38,10 @@ interface ContactInfo {
 
 interface DashboardProps {
     privacyMode: boolean;
+    onOpenCompare?: () => void;
 }
 
-export function Dashboard({ privacyMode }: DashboardProps) {
+export function Dashboard({ privacyMode, onOpenCompare }: DashboardProps) {
     const [inputNumber, setInputNumber] = useState('');
     const [contacts, setContacts] = useState<Map<string, ContactInfo>>(new Map());
     const [archivedContacts, setArchivedContacts] = useState<ContactInfo[]>([]);
@@ -806,19 +807,30 @@ export function Dashboard({ privacyMode }: DashboardProps) {
             <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
                 <div className="flex justify-between items-center mb-4">
                     <h2 className="text-xl font-semibold text-gray-900">Contatto da monitorare</h2>
-                    {/* Archive Button - positioned on the right */}
-                    <button
-                        onClick={() => setShowArchive(true)}
-                        className="px-3 py-1.5 bg-white text-amber-600 rounded-lg flex items-center gap-2 font-medium text-xs transition-all duration-200 hover:bg-amber-50 border border-amber-200"
-                    >
-                        <Archive size={16} />
-                        <span>Archivio</span>
-                        {archivedContacts.length > 0 && (
-                            <span className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full text-xs font-bold">
-                                {archivedContacts.length}
-                            </span>
+                    {/* Compare and Archive Buttons - positioned on the right */}
+                    <div className="flex items-center gap-2">
+                        {onOpenCompare && (
+                            <button
+                                onClick={onOpenCompare}
+                                className="px-3 py-1.5 bg-white text-emerald-600 rounded-lg flex items-center gap-2 font-medium text-xs transition-all duration-200 hover:bg-emerald-50 border border-emerald-200"
+                            >
+                                <GitCompareArrows size={16} />
+                                <span>Confronta</span>
+                            </button>
                         )}
-                    </button>
+                        <button
+                            onClick={() => setShowArchive(true)}
+                            className="px-3 py-1.5 bg-white text-amber-600 rounded-lg flex items-center gap-2 font-medium text-xs transition-all duration-200 hover:bg-amber-50 border border-amber-200"
+                        >
+                            <Archive size={16} />
+                            <span>Archivio</span>
+                            {archivedContacts.length > 0 && (
+                                <span className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full text-xs font-bold">
+                                    {archivedContacts.length}
+                                </span>
+                            )}
+                        </button>
+                    </div>
                 </div>
                 <div className="flex gap-4">
                     <div className="flex flex-1 border border-gray-300 rounded-lg focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500 bg-white items-center">
