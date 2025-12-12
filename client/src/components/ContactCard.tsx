@@ -488,7 +488,7 @@ export function ContactCard({
             {/* Content (Collapsible) */}
             <div className={clsx(
                 "transition-[max-height,opacity] duration-300 ease-in-out overflow-hidden",
-                isCollapsed ? "max-h-0 opacity-0" : "max-h-[500px] opacity-100"
+                isCollapsed ? "max-h-0 opacity-0" : "max-h-[650px] opacity-100"
             )}>
                 <div className="p-6">
                     {showLog ? (
@@ -636,7 +636,7 @@ export function ContactCard({
                         </div>
                     ) : (
                         /* Real-time Monitoring View */
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-stretch">
                             {/* Status Card */}
                             <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 flex flex-col items-center text-center">
                                 <div className="relative mb-4">
@@ -693,6 +693,17 @@ export function ContactCard({
                                         <span className="flex items-center gap-1"><Smartphone size={16} /> Devices</span>
                                         <span className="font-medium">{deviceCount || 0}</span>
                                     </div>
+                                    {/* Multi-device warning */}
+                                    {deviceCount > 1 && (
+                                        <div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded-lg">
+                                            <div className="flex items-start gap-2">
+                                                <AlertCircle size={14} className="text-amber-600 mt-0.5 flex-shrink-0" />
+                                                <p className="text-xs text-amber-700">
+                                                    <strong>Multi-device rilevato:</strong> WhatsApp Web/Desktop attivo può influenzare l'accuratezza del tracking. I dati sono più precisi quando il contatto usa solo il cellulare.
+                                                </p>
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
 
                                 {/* Device List */}
@@ -703,7 +714,7 @@ export function ContactCard({
                                             {devices.map((device, idx) => (
                                                 <div key={device.jid} className="flex items-center justify-between text-sm py-1">
                                                     <div className="flex items-center gap-2">
-                                                        <Monitor size={14} className="text-gray-400" />
+                                                        <Smartphone size={14} className="text-gray-400" />
                                                         <span className="text-gray-600">Device {idx + 1}</span>
                                                     </div>
                                                     <span className={clsx(
@@ -720,7 +731,7 @@ export function ContactCard({
                             </div>
 
                             {/* Metrics & Chart */}
-                            <div className="md:col-span-2 space-y-6">
+                            <div className="md:col-span-2 flex flex-col gap-6 h-full">
                                 {/* Metrics Grid */}
                                 <div className="grid grid-cols-3 gap-4">
                                     <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
@@ -737,8 +748,8 @@ export function ContactCard({
                                     </div>
                                 </div>
 
-                                {/* Chart */}
-                                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 h-[300px]">
+                                {/* Chart - flex-1 to fill remaining height */}
+                                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 flex-1 min-h-[250px]">
                                     <h5 className="text-sm font-medium text-gray-500 mb-4">RTT History & Threshold</h5>
                                     <ResponsiveContainer width="100%" height="100%">
                                         <LineChart data={data}>

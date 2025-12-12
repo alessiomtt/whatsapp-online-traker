@@ -129,20 +129,18 @@ export class WhatsAppTracker {
             for (const update of updates) {
                 const remoteJid = update.key.remoteJid;
 
-                // Check if update is from any of the tracked JIDs (multi-device support)
-                // Also check for LID-based JIDs that we haven't discovered yet
+                // Accept ACKs from both main JID and LID, but associate with main target
+                // WhatsApp may return ACKs with LID even when we send to @s.whatsapp.net
+                // The important thing is that it's fromMe (our probe) and directed at our target
                 if (remoteJid && update.key.fromMe) {
-                    // Direct match - JID is already in trackedJids
-                    if (this.trackedJids.has(remoteJid)) {
-                        this.analyzeUpdate(update);
-                    }
-                    // LID discovery - if this is a LID (@lid) and we're tracking this conversation
-                    // The LID corresponds to our target if we're receiving fromMe messages for it
-                    else if (remoteJid.endsWith('@lid')) {
-                        // This is likely the LID version of our target - add it to tracking
-                        trackerLogger.debug(`[MULTI-DEVICE] Discovered LID for tracking: ${remoteJid}`);
-                        this.trackedJids.add(remoteJid);
-                        this.analyzeUpdate(update);
+                    // Check if this matches our target (direct or via LID)
+                    const isMainTarget = this.trackedJids.has(remoteJid);
+                    const isLidForTarget = remoteJid.endsWith('@lid');
+
+                    if (isMainTarget || isLidForTarget) {
+                        // Always use the main targetJid for metrics, not the LID
+                        // This ensures all RTT data goes to the same device entry
+                        this.analyzeUpdate(update, this.targetJid);
                     }
                 }
             }
@@ -278,11 +276,13 @@ export class WhatsAppTracker {
     /**
      * Analyze message update and calculate RTT
      * @param update Message update from WhatsApp
+     * @param overrideJid Optional JID to use instead of the one in the update (for LID consolidation)
      */
-    private analyzeUpdate(update: { key: proto.IMessageKey, update: Partial<proto.IWebMessageInfo> }) {
+    private analyzeUpdate(update: { key: proto.IMessageKey, update: Partial<proto.IWebMessageInfo> }, overrideJid?: string) {
         const status = update.update.status;
         const msgId = update.key.id;
-        const fromJid = update.key.remoteJid;
+        // Use override JID if provided (consolidates LID to main target)
+        const fromJid = overrideJid || update.key.remoteJid;
 
         if (!msgId || !fromJid) return;
 
