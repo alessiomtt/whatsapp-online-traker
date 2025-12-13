@@ -172,6 +172,7 @@ function App() {
         warmupEnabled: boolean;
         warmupProbeCount: number;
         outlierFilterEnabled: boolean;
+        defaultProbeMethod: 'reaction' | 'delete';
     }
 
     const [configData, setConfigData] = useState<{
@@ -186,7 +187,8 @@ function App() {
         calibrationProbeCount: 5,
         warmupEnabled: false,
         warmupProbeCount: 2,
-        outlierFilterEnabled: false
+        outlierFilterEnabled: false,
+        defaultProbeMethod: 'delete'
     });
     // String versions for text input (prevents focus loss on each keystroke)
     const [configFormStrings, setConfigFormStrings] = useState({
@@ -264,7 +266,8 @@ function App() {
             calibrationProbeCount: parseInt(configFormStrings.calibrationProbeCount) || 5,
             warmupEnabled: configForm.warmupEnabled,
             warmupProbeCount: parseInt(configFormStrings.warmupProbeCount) || 2,
-            outlierFilterEnabled: configForm.outlierFilterEnabled
+            outlierFilterEnabled: configForm.outlierFilterEnabled,
+            defaultProbeMethod: configForm.defaultProbeMethod
         };
         socket.emit('admin-save-config', configToSave);
     };
@@ -412,7 +415,7 @@ function App() {
                                         type="text"
                                         value={configFormStrings.probeIntervalDefault}
                                         onChange={(e) => setConfigFormStrings({ ...configFormStrings, probeIntervalDefault: e.target.value })}
-                                        
+
                                         className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                                     />
                                 </label>
@@ -432,7 +435,7 @@ function App() {
                                         type="text"
                                         value={configFormStrings.offlineThreshold}
                                         onChange={(e) => setConfigFormStrings({ ...configFormStrings, offlineThreshold: e.target.value })}
-                                        
+
                                         className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                                     />
                                 </label>
@@ -452,7 +455,7 @@ function App() {
                                         type="text"
                                         value={configFormStrings.thresholdMultiplier}
                                         onChange={(e) => setConfigFormStrings({ ...configFormStrings, thresholdMultiplier: e.target.value })}
-                                        
+
                                         className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                                     />
                                 </label>
@@ -476,7 +479,7 @@ function App() {
                                             type="text"
                                             value={configFormStrings.calibrationProbeCount}
                                             onChange={(e) => setConfigFormStrings({ ...configFormStrings, calibrationProbeCount: e.target.value })}
-                                            
+
                                             className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                                         />
                                     </label>
@@ -516,7 +519,7 @@ function App() {
                                                 type="text"
                                                 value={configFormStrings.warmupProbeCount}
                                                 onChange={(e) => setConfigFormStrings({ ...configFormStrings, warmupProbeCount: e.target.value })}
-                                                
+
                                                 className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                                             />
                                         </label>
@@ -543,6 +546,38 @@ function App() {
                                         />
                                         <div className="w-11 h-6 bg-gray-300 peer-focus:ring-2 peer-focus:ring-blue-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
                                     </label>
+                                </div>
+                            </div>
+
+                            {/* Probe Method Settings Section */}
+                            <div className="border-t border-gray-200 pt-4 mt-4">
+                                <h4 className="text-sm font-semibold text-gray-800 mb-3">Impostazioni Metodo Probe</h4>
+
+                                {/* Default Probe Method Toggle */}
+                                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                                    <div>
+                                        <span className="text-sm font-medium text-gray-700">Metodo Probe Default</span>
+                                        <p className="text-xs text-gray-500 mt-1">
+                                            {configForm.defaultProbeMethod === 'delete'
+                                                ? 'Delete (silenzioso): invia un comando di eliminazione per un messaggio inesistente'
+                                                : 'Reaction: invia una reaction a un messaggio inesistente'}
+                                        </p>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <span className={`text-xs font-medium ${configForm.defaultProbeMethod === 'reaction' ? 'text-amber-600' : 'text-gray-400'}`}>
+                                            R
+                                        </span>
+                                        <button
+                                            type="button"
+                                            onClick={() => setConfigForm({ ...configForm, defaultProbeMethod: configForm.defaultProbeMethod === 'delete' ? 'reaction' : 'delete' })}
+                                            className={`relative w-8 h-4 rounded-full transition-colors cursor-pointer ${configForm.defaultProbeMethod === 'delete' ? 'bg-purple-500' : 'bg-amber-500'}`}
+                                        >
+                                            <div className={`absolute top-0.5 w-3 h-3 bg-white rounded-full shadow transition-transform ${configForm.defaultProbeMethod === 'delete' ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                                        </button>
+                                        <span className={`text-xs font-medium ${configForm.defaultProbeMethod === 'delete' ? 'text-purple-600' : 'text-gray-400'}`}>
+                                            D
+                                        </span>
+                                    </div>
                                 </div>
                             </div>
 

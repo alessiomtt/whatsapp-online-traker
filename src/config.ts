@@ -41,6 +41,8 @@ export interface EditableConfig {
     warmupEnabled: boolean;         // Skip first N probes
     warmupProbeCount: number;       // Number of probes to skip (default 2)
     outlierFilterEnabled: boolean;  // Filter outliers > 3x median during calibration
+    // Probe method settings
+    defaultProbeMethod: 'reaction' | 'delete';  // Default method for new sessions
 }
 
 // Path to custom config file
@@ -82,7 +84,8 @@ export function getDefaultEditableConfig(): EditableConfig {
         calibrationProbeCount: 5,
         warmupEnabled: false,
         warmupProbeCount: 2,
-        outlierFilterEnabled: false
+        outlierFilterEnabled: false,
+        defaultProbeMethod: 'delete'  // Default to silent delete method
     };
 }
 
@@ -160,7 +163,8 @@ export function getCurrentEditableConfig(): EditableConfig {
             calibrationProbeCount: custom.calibrationProbeCount ?? defaults.calibrationProbeCount,
             warmupEnabled: custom.warmupEnabled ?? defaults.warmupEnabled,
             warmupProbeCount: custom.warmupProbeCount ?? defaults.warmupProbeCount,
-            outlierFilterEnabled: custom.outlierFilterEnabled ?? defaults.outlierFilterEnabled
+            outlierFilterEnabled: custom.outlierFilterEnabled ?? defaults.outlierFilterEnabled,
+            defaultProbeMethod: custom.defaultProbeMethod ?? defaults.defaultProbeMethod
         };
     }
 

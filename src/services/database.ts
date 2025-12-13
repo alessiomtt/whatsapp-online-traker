@@ -8,6 +8,7 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
+import { getCurrentEditableConfig } from '../config';
 
 // Database interfaces
 export interface Session {
@@ -164,6 +165,7 @@ export function createSession(jid: string, phoneNumber: string): Session {
 
     if (stoppedSession) {
         // Reactivate the stopped session instead of creating a new one
+        // Keep the existing probe_method (user may have changed it)
         database.prepare(`
             UPDATE sessions 
             SET is_active = 1, stopped_at = NULL, started_at = CURRENT_TIMESTAMP
@@ -174,13 +176,14 @@ export function createSession(jid: string, phoneNumber: string): Session {
         return database.prepare(`SELECT * FROM sessions WHERE id = ?`).get(stoppedSession.id) as Session;
     }
 
-    // No existing session found, create a new one
+    // No existing session found, create a new one with configured default probe method
+    const defaultProbeMethod = getCurrentEditableConfig().defaultProbeMethod;
     const stmt = database.prepare(`
-        INSERT INTO sessions (jid, phone_number, is_active, is_archived)
-        VALUES (?, ?, 1, 0)
+        INSERT INTO sessions (jid, phone_number, is_active, is_archived, probe_method)
+        VALUES (?, ?, 1, 0, ?)
     `);
 
-    const result = stmt.run(jid, phoneNumber);
+    const result = stmt.run(jid, phoneNumber, defaultProbeMethod);
 
     return database.prepare(`SELECT * FROM sessions WHERE id = ?`).get(result.lastInsertRowid) as Session;
 }
@@ -223,7 +226,8 @@ export function getSessionProbeMethod(jid: string): string {
     const result = database.prepare(`
         SELECT probe_method FROM sessions WHERE jid = ? AND is_active = 1
     `).get(jid) as { probe_method: string } | undefined;
-    return result?.probe_method || 'reaction';
+    // Use configured default if no probe_method is saved
+    return result?.probe_method || getCurrentEditableConfig().defaultProbeMethod;
 }
 
 /**

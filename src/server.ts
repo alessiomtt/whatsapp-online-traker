@@ -323,8 +323,9 @@ io.on('connection', (socket) => {
                 const session = db.createSession(result.jid, validation.cleaned);
                 sessionIds.set(result.jid, session.id);
 
-                // Get saved probe method (default 'reaction' if not set)
-                const savedProbeMethod = (session.probe_method || 'reaction') as ProbeMethod;
+                // Get saved probe method (or use configured default for new sessions)
+                const configDefault = getCurrentEditableConfig().defaultProbeMethod;
+                const savedProbeMethod = (session.probe_method || configDefault) as ProbeMethod;
                 const trackerContactName = session.custom_name || validation.cleaned;
 
                 const tracker = new WhatsAppTracker(sock, result.jid, false, session.id, savedProbeMethod, trackerContactName);
