@@ -4,7 +4,7 @@ import autoTable from 'jspdf-autotable';
 
 // Types
 interface LogEvent {
-    type: 'start' | 'stop' | 'restart' | 'warmup' | 'warmup_end' | 'calibration' | 'calibration_end' | 'calibration_reset' | 'online' | 'offline' | 'standby';
+    type: 'start' | 'stop' | 'restart' | 'warmup' | 'warmup_end' | 'calibration' | 'calibrating' | 'calibration_end' | 'calibration_reset' | 'online' | 'offline' | 'standby';
     timestamp: number;
     message: string;
 }
@@ -38,7 +38,8 @@ const EVENT_MESSAGES: Record<string, string> = {
     stop: 'Monitoraggio interrotto',
     warmup: 'Warmup avviato',
     warmup_end: 'Warmup completato',
-    calibration: 'Calibrazione in corso',
+    calibration: 'Calibrazione avviata',
+    calibrating: 'Calibrazione avviata',
     calibration_end: 'Calibrazione completata',
     calibration_reset: 'Calibrazione resettata',
     online: 'Online',
@@ -56,6 +57,7 @@ function getEventColor(type: string): string {
         case 'warmup_end':
             return COLORS.warmup;   // viola
         case 'calibration':
+        case 'calibrating':
         case 'calibration_end':
         case 'calibration_reset':
             return COLORS.calibration;  // blu

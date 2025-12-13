@@ -164,7 +164,7 @@ export class WhatsAppTracker {
                     sessionId: this.sessionId,
                     jid: this.targetJid,
                     eventType: 'calibrating',
-                    state: 'Calibration started'
+                    state: 'Calibrazione avviata'
                 });
             }
         };

@@ -13,6 +13,7 @@ interface TrackerData {
     threshold: number;
     state: string;
     timestamp: number;
+    eventType?: string;
 }
 
 interface DeviceInfo {
@@ -279,7 +280,10 @@ export function Dashboard({ privacyMode, onOpenCompare }: DashboardProps) {
             // Include ALL event types: rtt, online, offline, standby, stop, start, restart
             const newTrackerData: TrackerData[] = data.logs
                 .filter(log => {
-                    const validTypes = ['rtt', 'online', 'offline', 'standby', 'stop', 'start'];
+                    const validTypes = [
+                        'rtt', 'online', 'offline', 'standby', 'stop', 'start', 'restart',
+                        'warmup', 'warmup_end', 'calibrating', 'calibration_end', 'calibration_reset'
+                    ];
                     return validTypes.includes(log.event_type);
                 })
                 .map(log => {
@@ -294,7 +298,8 @@ export function Dashboard({ privacyMode, onOpenCompare }: DashboardProps) {
                         median: log.median_rtt || 0,
                         threshold: log.threshold || 0,
                         state: log.state || log.event_type,
-                        timestamp: new Date(timestamp).getTime()
+                        timestamp: new Date(timestamp).getTime(),
+                        eventType: log.event_type
                     };
                 })
                 .reverse(); // Oldest first for display
@@ -345,8 +350,9 @@ export function Dashboard({ privacyMode, onOpenCompare }: DashboardProps) {
                         avg: 0,
                         median: 0,
                         threshold: 0,
-                        state: event.event_type, // online, offline, standby, start, stop
-                        timestamp: new Date(timestamp).getTime()
+                        state: event.state || event.event_type,
+                        timestamp: new Date(timestamp).getTime(),
+                        eventType: event.event_type
                     };
                 })
                 .reverse(); // Oldest first for display
@@ -1030,34 +1036,57 @@ function LogView({ data, contactName, contactNumber, jid, profilePic }: {
     // Generate events from data
     const events: { type: string; timestamp: number; message: string }[] = [];
 
-    if (data.length > 0) {
-        events.push({ type: 'start', timestamp: data[0].timestamp, message: 'Monitoraggio avviato' });
-    }
+    // If data comes from database logs, it has eventType
+    // We should use that directly instead of inferring from state changes
+    const sortedData = [...data].sort((a, b) => a.timestamp - b.timestamp);
 
     let prevState = '';
-    for (const entry of data) {
-        const state = entry.state.toLowerCase();
-        if (state !== prevState) {
-            // Calibration events
-            if (state.includes('calibrat')) {
-                if (prevState && !prevState.includes('calibrat')) {
-                    events.push({ type: 'calibration', timestamp: entry.timestamp, message: 'Calibrazione in corso' });
-                }
-            } else if (prevState.includes('calibrat')) {
-                events.push({ type: 'calibration_end', timestamp: entry.timestamp, message: 'Calibrazione completata' });
+    for (const entry of sortedData) {
+        if (entry.eventType) {
+            // Direct event from DB
+            let message = entry.state;
+
+            // Map types to standard messages if needed
+            switch (entry.eventType) {
+                case 'start': message = 'Monitoraggio avviato'; break;
+                case 'restart': message = 'Monitoraggio riavviato'; break;
+                case 'stop': message = 'Monitoraggio interrotto'; break;
+                case 'warmup': message = 'Warmup avviato'; break;
+                case 'warmup_end': message = 'Warmup completato'; break;
+                case 'calibration': message = 'Calibrazione avviata'; break;
+                case 'calibrating': message = 'Calibrazione avviata'; break;
+                case 'calibration_end': message = 'Calibrazione completata'; break;
+                case 'calibration_reset': message = 'Calibrazione resettata'; break;
+                case 'online': message = 'Online'; break;
+                case 'standby': message = 'Standby'; break;
+                case 'offline': message = 'Offline'; break;
             }
 
-            // State transitions
-            if (state.includes('online')) {
-                events.push({ type: 'online', timestamp: entry.timestamp, message: 'Online' });
-            } else if (state === 'standby') {
-                events.push({ type: 'standby', timestamp: entry.timestamp, message: 'Standby' });
-            } else if (state === 'offline') {
-                events.push({ type: 'offline', timestamp: entry.timestamp, message: 'Offline' });
-            } else if (state === 'stop') {
-                events.push({ type: 'stop', timestamp: entry.timestamp, message: 'Monitoraggio interrotto' });
-            } else if (state === 'start') {
-                events.push({ type: 'restart', timestamp: entry.timestamp, message: 'Monitoraggio riavviato' });
+            // Exclude 'rtt' events from log list, keep only status changes
+            if (entry.eventType !== 'rtt') {
+                events.push({
+                    type: entry.eventType,
+                    timestamp: entry.timestamp,
+                    message: message
+                });
+            }
+        } else {
+            // Legacy/Live data fallback: infer from state string
+            const state = entry.state.toLowerCase();
+            // (Keep basic inference for backward compatibility if needed, 
+            // but mostly we rely on DB logs for archive)
+            if (state !== prevState) {
+                if (state.includes('calibrat') && !prevState.includes('calibrat')) {
+                    events.push({ type: 'calibration', timestamp: entry.timestamp, message: 'Calibrazione in corso' });
+                } else if (!state.includes('calibrat') && prevState.includes('calibrat')) {
+                    events.push({ type: 'calibration_end', timestamp: entry.timestamp, message: 'Calibrazione completata' });
+                } else if (state.includes('online')) {
+                    events.push({ type: 'online', timestamp: entry.timestamp, message: 'Online' });
+                } else if (state === 'standby') {
+                    events.push({ type: 'standby', timestamp: entry.timestamp, message: 'Standby' });
+                } else if (state === 'offline') {
+                    events.push({ type: 'offline', timestamp: entry.timestamp, message: 'Offline' });
+                }
             }
             prevState = state;
         }
@@ -1067,25 +1096,30 @@ function LogView({ data, contactName, contactNumber, jid, profilePic }: {
         switch (type) {
             case 'start':
             case 'restart':
-            case 'calibration':
-                return 'bg-blue-50 border-l-blue-500 text-blue-800';
-            case 'calibration_end':
-                return 'bg-green-50 border-l-green-500 text-green-800';
-            case 'online':
-                return 'bg-green-50 border-l-green-500 text-green-800';
-            case 'standby':
-                return 'bg-yellow-50 border-l-yellow-500 text-yellow-800';
-            case 'offline':
             case 'stop':
-                return 'bg-red-50 border-l-red-500 text-red-800';
+                return 'bg-white border-l-4 border-l-gray-300 text-gray-700';
+            case 'warmup':
+            case 'warmup_end':
+                return 'bg-purple-50 border-l-4 border-l-purple-500 text-purple-800';
+            case 'calibration':
+            case 'calibrating':
+            case 'calibration_end':
+            case 'calibration_reset':
+                return 'bg-blue-50 border-l-4 border-l-blue-500 text-blue-800';
+            case 'online':
+                return 'bg-green-50 border-l-4 border-l-green-500 text-green-800';
+            case 'standby':
+                return 'bg-yellow-50 border-l-4 border-l-yellow-500 text-yellow-800';
+            case 'offline':
+                return 'bg-red-50 border-l-4 border-l-red-500 text-red-800';
             default:
-                return 'bg-gray-50 border-l-gray-400 text-gray-800';
+                return 'bg-gray-50 border-l-4 border-l-gray-400 text-gray-800';
         }
     };
 
     // Prepare events for export (reversed to show oldest first)
     const exportEvents = events.slice().reverse().map(e => ({
-        type: e.type as 'start' | 'stop' | 'restart' | 'calibration' | 'calibration_end' | 'online' | 'offline' | 'standby',
+        type: e.type as 'start' | 'stop' | 'restart' | 'calibration' | 'calibrating' | 'calibration_end' | 'calibration_reset' | 'warmup' | 'warmup_end' | 'online' | 'offline' | 'standby',
         timestamp: e.timestamp,
         message: e.message
     }));
@@ -1102,7 +1136,7 @@ function LogView({ data, contactName, contactNumber, jid, profilePic }: {
                             jid,
                             events: exportEvents
                         })}
-                        className="flex items-center gap-1 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors"
+                        className="flex items-center gap-1 px-3 py-1.5 bg-white text-green-600 hover:bg-green-50 rounded-lg text-sm font-medium transition-colors border border-green-200"
                         title="Esporta in Excel"
                     >
                         <FileSpreadsheet size={14} />
@@ -1116,7 +1150,7 @@ function LogView({ data, contactName, contactNumber, jid, profilePic }: {
                             events: exportEvents,
                             profilePic
                         })}
-                        className="flex items-center gap-1 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors"
+                        className="flex items-center gap-1 px-3 py-1.5 bg-white text-red-600 hover:bg-red-50 rounded-lg text-sm font-medium transition-colors border border-red-200"
                         title="Esporta in PDF"
                     >
                         <FileText size={14} />

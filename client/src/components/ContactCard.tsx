@@ -170,10 +170,16 @@ export function ContactCard({
             switch (eventType) {
                 case 'start': return 'Monitoraggio avviato';
                 case 'stop': return 'Monitoraggio interrotto';
+                case 'restart': return 'Monitoraggio riavviato';
                 case 'online': return 'Online';
                 case 'offline': return 'Offline';
                 case 'standby': return 'Standby';
-                case 'calibrating': return 'Calibrazione in corso';
+                case 'calibrating':
+                case 'calibration': return 'Calibrazione avviata';
+                case 'calibration_end': return 'Calibrazione completata';
+                case 'calibration_reset': return 'Calibrazione resettata';
+                case 'warmup': return 'Warmup avviato';
+                case 'warmup_end': return 'Warmup completato';
                 default: return eventType;
             }
         };
@@ -182,11 +188,17 @@ export function ContactCard({
             switch (eventType) {
                 case 'start': return 'start';
                 case 'stop': return 'stop';
+                case 'restart': return 'restart';
                 case 'online': return 'online';
                 case 'offline': return 'offline';
                 case 'standby': return 'standby';
-                case 'calibrating': return 'calibration';
-                default: return 'online';
+                case 'calibrating':
+                case 'calibration': return 'calibration';
+                case 'calibration_end': return 'calibration_end';
+                case 'calibration_reset': return 'calibration_reset';
+                case 'warmup': return 'warmup';
+                case 'warmup_end': return 'warmup_end';
+                default: return 'online'; // Default fallback should probably be neutral or distinct?
             }
         };
 
@@ -202,7 +214,7 @@ export function ContactCard({
             return {
                 type: getEventType(event.event_type),
                 timestamp: new Date(timestamp).getTime(),
-                message: getEventMessage(event.event_type)
+                message: getEventMessage(event.event_type) // We ignore event.state and enforce standard messages
             };
         });
     }, [dbActivityEvents]);
@@ -745,20 +757,23 @@ export function ContactCard({
                                                 switch (event.type) {
                                                     case 'start':
                                                     case 'restart':
-                                                    case 'calibration':
-                                                        return 'bg-blue-50 border-l-4 border-l-blue-500';
-                                                    case 'calibration_end':
-                                                        return 'bg-green-50 border-l-4 border-l-green-500';
-                                                    case 'online':
-                                                        return 'bg-green-50 border-l-4 border-l-green-500';
-                                                    case 'standby':
-                                                        return 'bg-yellow-50 border-l-4 border-l-yellow-500';
-                                                    case 'offline':
-                                                        return 'bg-red-50 border-l-4 border-l-red-500';
                                                     case 'stop':
-                                                        return 'bg-red-50 border-l-4 border-l-red-500';
+                                                        return 'bg-white border-l-4 border-l-gray-300 text-gray-700';
+                                                    case 'warmup':
+                                                    case 'warmup_end':
+                                                        return 'bg-purple-50 border-l-4 border-l-purple-500 text-purple-800';
+                                                    case 'calibration':
+                                                    case 'calibration_end':
+                                                    case 'calibration_reset':
+                                                        return 'bg-blue-50 border-l-4 border-l-blue-500 text-blue-800';
+                                                    case 'online':
+                                                        return 'bg-green-50 border-l-4 border-l-green-500 text-green-800';
+                                                    case 'standby':
+                                                        return 'bg-yellow-50 border-l-4 border-l-yellow-500 text-yellow-800';
+                                                    case 'offline':
+                                                        return 'bg-red-50 border-l-4 border-l-red-500 text-red-800';
                                                     default:
-                                                        return 'bg-gray-50 border-l-4 border-l-gray-400';
+                                                        return 'bg-gray-50 border-l-4 border-l-gray-400 text-gray-800';
                                                 }
                                             };
 
