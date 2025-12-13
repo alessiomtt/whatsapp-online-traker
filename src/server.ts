@@ -348,16 +348,20 @@ io.on('connection', (socket) => {
                     db.updateSessionProfilePic(result.jid, ppUrl);
                 }
 
-                let contactName = validation.cleaned;
-                try {
-                    const contactInfo = await sock.onWhatsApp(result.jid);
-                    if (contactInfo && contactInfo[0]?.notify) {
-                        contactName = contactInfo[0].notify;
-                        // Update session with contact name
-                        db.updateSessionName(result.jid, contactName);
+                let contactName = session.custom_name || validation.cleaned;
+
+                // Only fetch WhatsApp name if no custom name exists
+                if (!session.custom_name) {
+                    try {
+                        const contactInfo = await sock.onWhatsApp(result.jid);
+                        if (contactInfo && contactInfo[0]?.notify) {
+                            contactName = contactInfo[0].notify;
+                            // Update session with contact name
+                            db.updateSessionName(result.jid, contactName);
+                        }
+                    } catch (err) {
+                        console.log('[NAME] Could not fetch contact name, using number');
                     }
-                } catch (err) {
-                    console.log('[NAME] Could not fetch contact name, using number');
                 }
 
                 socket.emit('contact-added', { jid: result.jid, number: validation.cleaned });
