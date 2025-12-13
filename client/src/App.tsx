@@ -188,6 +188,14 @@ function App() {
         warmupProbeCount: 2,
         outlierFilterEnabled: false
     });
+    // String versions for text input (prevents focus loss on each keystroke)
+    const [configFormStrings, setConfigFormStrings] = useState({
+        probeIntervalDefault: '2000',
+        offlineThreshold: '10000',
+        thresholdMultiplier: '0.9',
+        calibrationProbeCount: '5',
+        warmupProbeCount: '2'
+    });
     const [configLoading, setConfigLoading] = useState(false);
     const [configSaving, setConfigSaving] = useState(false);
     const [configMessage, setConfigMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
@@ -201,6 +209,13 @@ function App() {
             const onConfigData = (data: any) => {
                 setConfigData(data);
                 setConfigForm(data.current);
+                setConfigFormStrings({
+                    probeIntervalDefault: String(data.current.probeIntervalDefault),
+                    offlineThreshold: String(data.current.offlineThreshold),
+                    thresholdMultiplier: String(data.current.thresholdMultiplier),
+                    calibrationProbeCount: String(data.current.calibrationProbeCount),
+                    warmupProbeCount: String(data.current.warmupProbeCount)
+                });
                 setConfigLoading(false);
             };
 
@@ -241,7 +256,17 @@ function App() {
     const handleSaveConfig = () => {
         setConfigSaving(true);
         setConfigMessage(null);
-        socket.emit('admin-save-config', configForm);
+        // Parse string values to numbers before saving
+        const configToSave = {
+            probeIntervalDefault: parseInt(configFormStrings.probeIntervalDefault) || 2000,
+            offlineThreshold: parseInt(configFormStrings.offlineThreshold) || 10000,
+            thresholdMultiplier: parseFloat(configFormStrings.thresholdMultiplier) || 0.9,
+            calibrationProbeCount: parseInt(configFormStrings.calibrationProbeCount) || 5,
+            warmupEnabled: configForm.warmupEnabled,
+            warmupProbeCount: parseInt(configFormStrings.warmupProbeCount) || 2,
+            outlierFilterEnabled: configForm.outlierFilterEnabled
+        };
+        socket.emit('admin-save-config', configToSave);
     };
 
     const handleResetConfig = () => {
@@ -384,18 +409,17 @@ function App() {
                                 <label className="block">
                                     <span className="text-sm font-medium text-gray-700">Intervallo Probe (ms)</span>
                                     <input
-                                        type="number"
-                                        value={configForm.probeIntervalDefault}
-                                        onChange={(e) => setConfigForm({ ...configForm, probeIntervalDefault: parseInt(e.target.value) || 0 })}
+                                        type="text"
+                                        value={configFormStrings.probeIntervalDefault}
+                                        onChange={(e) => setConfigFormStrings({ ...configFormStrings, probeIntervalDefault: e.target.value })}
+                                        
                                         className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                        min={50}
-                                        max={60000}
                                     />
                                 </label>
                                 <p className="text-xs text-gray-500">
                                     Tempo tra ogni rilevamento dello stato. Valori più bassi = rilevamento più veloce ma maggior consumo.
                                     <br />
-                                    <span className="font-medium">Range: 50-60000 ms</span> |
+                                    <span className="font-medium">Consigliato: 50-60000 ms</span> |
                                     <span className="text-blue-600"> Default: {configData?.defaults.probeIntervalDefault || 2000} ms</span>
                                 </p>
                             </div>
@@ -405,18 +429,17 @@ function App() {
                                 <label className="block">
                                     <span className="text-sm font-medium text-gray-700">Soglia Offline (ms)</span>
                                     <input
-                                        type="number"
-                                        value={configForm.offlineThreshold}
-                                        onChange={(e) => setConfigForm({ ...configForm, offlineThreshold: parseInt(e.target.value) || 0 })}
+                                        type="text"
+                                        value={configFormStrings.offlineThreshold}
+                                        onChange={(e) => setConfigFormStrings({ ...configFormStrings, offlineThreshold: e.target.value })}
+                                        
                                         className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                        min={1000}
-                                        max={30000}
                                     />
                                 </label>
                                 <p className="text-xs text-gray-500">
                                     RTT (Round-Trip Time) sopra questa soglia indica che il dispositivo è offline o irraggiungibile.
                                     <br />
-                                    <span className="font-medium">Range: 1000-30000 ms</span> |
+                                    <span className="font-medium">Consigliato: 1000-30000 ms</span> |
                                     <span className="text-blue-600"> Default: {configData?.defaults.offlineThreshold || 10000} ms</span>
                                 </p>
                             </div>
@@ -426,19 +449,17 @@ function App() {
                                 <label className="block">
                                     <span className="text-sm font-medium text-gray-700">Moltiplicatore Soglia</span>
                                     <input
-                                        type="number"
-                                        value={configForm.thresholdMultiplier}
-                                        onChange={(e) => setConfigForm({ ...configForm, thresholdMultiplier: parseFloat(e.target.value) || 0 })}
+                                        type="text"
+                                        value={configFormStrings.thresholdMultiplier}
+                                        onChange={(e) => setConfigFormStrings({ ...configFormStrings, thresholdMultiplier: e.target.value })}
+                                        
                                         className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                        min={0.5}
-                                        max={1.5}
-                                        step={0.1}
                                     />
                                 </label>
                                 <p className="text-xs text-gray-500">
                                     Determina la sensibilità nel rilevare cambiamenti di stato. Valori più bassi = più sensibile.
                                     <br />
-                                    <span className="font-medium">Range: 0.5-1.5</span> |
+                                    <span className="font-medium">Consigliato: 0.5-1.5</span> |
                                     <span className="text-blue-600"> Default: {configData?.defaults.thresholdMultiplier || 0.9}</span>
                                 </p>
                             </div>
@@ -452,18 +473,17 @@ function App() {
                                     <label className="block">
                                         <span className="text-sm font-medium text-gray-700">Numero Probe Calibrazione</span>
                                         <input
-                                            type="number"
-                                            value={configForm.calibrationProbeCount}
-                                            onChange={(e) => setConfigForm({ ...configForm, calibrationProbeCount: parseInt(e.target.value) || 5 })}
+                                            type="text"
+                                            value={configFormStrings.calibrationProbeCount}
+                                            onChange={(e) => setConfigFormStrings({ ...configFormStrings, calibrationProbeCount: e.target.value })}
+                                            
                                             className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                            min={3}
-                                            max={20}
                                         />
                                     </label>
                                     <p className="text-xs text-gray-500">
                                         Numero di misurazioni RTT necessarie per completare la calibrazione.
                                         <br />
-                                        <span className="font-medium">Range: 3-20</span> |
+                                        <span className="font-medium">Consigliato: 3-20</span> |
                                         <span className="text-blue-600"> Default: 5</span>
                                     </p>
                                 </div>
@@ -493,16 +513,15 @@ function App() {
                                         <label className="block">
                                             <span className="text-sm font-medium text-gray-700">Probe da scartare</span>
                                             <input
-                                                type="number"
-                                                value={configForm.warmupProbeCount}
-                                                onChange={(e) => setConfigForm({ ...configForm, warmupProbeCount: parseInt(e.target.value) || 2 })}
+                                                type="text"
+                                                value={configFormStrings.warmupProbeCount}
+                                                onChange={(e) => setConfigFormStrings({ ...configFormStrings, warmupProbeCount: e.target.value })}
+                                                
                                                 className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                                min={1}
-                                                max={5}
                                             />
                                         </label>
                                         <p className="text-xs text-gray-500">
-                                            <span className="font-medium">Range: 1-5</span> | Default: 2
+                                            <span className="font-medium">Consigliato: 1-5</span> | Default: 2
                                         </p>
                                     </div>
                                 )}

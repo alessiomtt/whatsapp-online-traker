@@ -738,17 +738,17 @@ io.on('connection', (socket) => {
     socket.on('admin-save-config', (newConfig: EditableConfig) => {
         console.log('[ADMIN] Request to save configuration:', newConfig);
 
-        // Validate ranges
+        // Basic validation - only check for valid positive numbers
         const errors: string[] = [];
 
-        if (newConfig.probeIntervalDefault < 50 || newConfig.probeIntervalDefault > 60000) {
-            errors.push('Intervallo Probe deve essere tra 50 e 60000 ms');
+        if (!newConfig.probeIntervalDefault || newConfig.probeIntervalDefault <= 0) {
+            errors.push('Intervallo Probe deve essere un numero positivo');
         }
-        if (newConfig.offlineThreshold < 1000 || newConfig.offlineThreshold > 30000) {
-            errors.push('Soglia Offline deve essere tra 1000 e 30000 ms');
+        if (!newConfig.offlineThreshold || newConfig.offlineThreshold <= 0) {
+            errors.push('Soglia Offline deve essere un numero positivo');
         }
-        if (newConfig.thresholdMultiplier < 0.5 || newConfig.thresholdMultiplier > 1.5) {
-            errors.push('Moltiplicatore Soglia deve essere tra 0.5 e 1.5');
+        if (!newConfig.thresholdMultiplier || newConfig.thresholdMultiplier <= 0) {
+            errors.push('Moltiplicatore Soglia deve essere un numero positivo');
         }
 
         if (errors.length > 0) {
