@@ -45,6 +45,18 @@ export class RttAnalyzer {
     private pendingState: string | null = null;         // State waiting for confirmation
     private confirmationCount: number = 0;              // Consecutive calculations in pending state
 
+    // Track offline→online transition for calibration reset
+    private previousState: string = 'Calibrating...';
+    private consecutiveOfflineCount: number = 0;
+    private readonly OFFLINE_PROBES_BEFORE_RESET = 15;  // 15 probes = 30 seconds
+
+    // Callbacks for logging warmup/calibration events
+    public onWarmupStart?: () => void;
+    public onWarmupEnd?: () => void;
+    public onCalibrationStart?: () => void;
+    private warmupStarted: boolean = false;
+    private calibrationStarted: boolean = false;
+
     /**
      * Add RTT measurement to global history
      * @param rtt Round-trip time in milliseconds
@@ -55,9 +67,26 @@ export class RttAnalyzer {
 
         // Warmup: skip first N probes if enabled
         if (editableConfig.warmupEnabled && this.warmupCount < editableConfig.warmupProbeCount) {
+            // Trigger warmup start callback on first warmup probe
+            if (!this.warmupStarted) {
+                this.warmupStarted = true;
+                this.onWarmupStart?.();
+            }
+
             this.warmupCount++;
             console.log(`[RTT ANALYZER] Warmup probe ${this.warmupCount}/${editableConfig.warmupProbeCount} - skipping`);
+
+            // Trigger warmup end callback when warmup completes
+            if (this.warmupCount >= editableConfig.warmupProbeCount) {
+                this.onWarmupEnd?.();
+            }
             return;
+        }
+
+        // Trigger calibration start callback on first calibration probe
+        if (!this.calibrationStarted) {
+            this.calibrationStarted = true;
+            this.onCalibrationStart?.();
         }
 
         // Outlier filter ONLY during calibration phase
@@ -323,6 +352,78 @@ export class RttAnalyzer {
     }
 
     /**
+     * Reset calibration data (warmup + RTT history) without full reset
+     * Called when transitioning from offline to online to get fresh baseline
+     */
+    resetCalibration(): void {
+        console.log('[RTT ANALYZER] Resetting calibration due to offline→online transition');
+        this.globalRttHistory = [];
+        this.cachedMedian = 0;
+        this.cachedThreshold = 0;
+        this.lastCalculationSize = 0;
+        this.warmupCount = 0;
+        this.totalProbeCount = 0;
+        this.minRttSeen = Infinity;
+        // Reset to calibrating state
+        this.confirmedState = 'Calibrating...';
+        this.pendingState = null;
+        this.confirmationCount = 0;
+        // Reset warmup/calibration tracking flags
+        this.warmupStarted = false;
+        this.calibrationStarted = false;
+        // Keep previousState to track the transition that caused reset
+    }
+
+    /**
+     * Check and handle offline→online transition based on RTT values
+     * - During calibration: ANY OFFLINE→Online resets (want clean baseline)
+     * - After calibration: Only 15+ consecutive OFFLINE→Online resets
+     * @param currentRtt Current RTT measurement in ms
+     * @returns true if calibration was reset
+     */
+    checkAndResetOnTransition(currentRtt: number): boolean {
+        const editableConfig = getCurrentEditableConfig();
+        const isStillCalibrating = this.globalRttHistory.length < editableConfig.calibrationProbeCount;
+
+        // Determine if current probe indicates OFFLINE (high RTT) or ONLINE (low RTT)
+        // Use a threshold: RTT > 5000ms is considered "offline behavior"
+        const OFFLINE_RTT_THRESHOLD = 5000;
+        const isCurrentlyOffline = currentRtt > OFFLINE_RTT_THRESHOLD;
+
+        // Track consecutive OFFLINE probes (high RTT)
+        if (isCurrentlyOffline) {
+            this.consecutiveOfflineCount++;
+            return false;
+        }
+
+        // Not OFFLINE (RTT is low = online) - check if we should reset
+        const hadOfflineProbes = this.consecutiveOfflineCount > 0;
+
+        if (hadOfflineProbes) {
+            // During calibration: reset on ANY OFFLINE→Online (want clean baseline)
+            if (isStillCalibrating) {
+                console.log(`[RTT ANALYZER] During calibration: OFFLINE (${this.consecutiveOfflineCount} probes) → Online (RTT=${currentRtt}ms), resetting for clean baseline`);
+                this.consecutiveOfflineCount = 0;
+                this.resetCalibration();
+                return true;
+            }
+
+            // After calibration: only reset if 15+ consecutive OFFLINE
+            if (this.consecutiveOfflineCount >= this.OFFLINE_PROBES_BEFORE_RESET) {
+                console.log(`[RTT ANALYZER] Prolonged OFFLINE (${this.consecutiveOfflineCount} probes) → Online (RTT=${currentRtt}ms), resetting calibration`);
+                this.consecutiveOfflineCount = 0;
+                this.resetCalibration();
+                return true;
+            }
+        }
+
+        // Reset counter when online
+        this.consecutiveOfflineCount = 0;
+
+        return false;
+    }
+
+    /**
      * Clear all cached values and history
      */
     reset(): void {
@@ -337,5 +438,10 @@ export class RttAnalyzer {
         this.confirmedState = 'Calibrating...';
         this.pendingState = null;
         this.confirmationCount = 0;
+        this.previousState = 'Calibrating...';
+        this.consecutiveOfflineCount = 0;
+        // Reset warmup/calibration tracking flags
+        this.warmupStarted = false;
+        this.calibrationStarted = false;
     }
 }

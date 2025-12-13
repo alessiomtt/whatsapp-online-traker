@@ -134,6 +134,40 @@ export class WhatsAppTracker {
         this.probeMethod = probeMethod;
         this.contactName = contactName ?? null;
         trackerLogger.setDebugMode(debugMode);
+
+        // Set up warmup/calibration event logging callbacks
+        this.rttAnalyzer.onWarmupStart = () => {
+            if (this.sessionId) {
+                db.logEvent({
+                    sessionId: this.sessionId,
+                    jid: this.targetJid,
+                    eventType: 'warmup',
+                    state: 'Warmup started'
+                });
+            }
+        };
+
+        this.rttAnalyzer.onWarmupEnd = () => {
+            if (this.sessionId) {
+                db.logEvent({
+                    sessionId: this.sessionId,
+                    jid: this.targetJid,
+                    eventType: 'warmup_end',
+                    state: 'Warmup completed'
+                });
+            }
+        };
+
+        this.rttAnalyzer.onCalibrationStart = () => {
+            if (this.sessionId) {
+                db.logEvent({
+                    sessionId: this.sessionId,
+                    jid: this.targetJid,
+                    eventType: 'calibrating',
+                    state: 'Calibration started'
+                });
+            }
+        };
     }
 
     /**
@@ -528,6 +562,10 @@ export class WhatsAppTracker {
                 metrics.state = 'OFFLINE';
                 trackerLogger.info(`\n🔴 Device ${jid} marked as OFFLINE (${metrics.consecutiveTimeouts} consecutive timeouts)\n`);
 
+                // Track this in the transition detection (timeout = high RTT = offline)
+                // This ensures consecutive timeouts are counted for calibration reset
+                this.rttAnalyzer.checkAndResetOnTransition(timeout);
+
                 // Log OFFLINE event to database - ONLY if not already offline
                 if (this.sessionId && !wasOffline) {
                     try {
@@ -618,11 +656,38 @@ export class WhatsAppTracker {
         if (!metrics) return;
 
         // Use the RTT analyzer to determine state
-        const analysis: StateAnalysisResult = this.rttAnalyzer.determineState(
+        let analysis: StateAnalysisResult = this.rttAnalyzer.determineState(
             metrics.recentRtts,
             metrics.lastRtt,
             metrics.state
         );
+
+        // Check for offline→online transition and reset calibration if needed
+        // Pass the RTT value, not the state (state is 'Calibrating...' during calibration)
+        const wasReset = this.rttAnalyzer.checkAndResetOnTransition(metrics.lastRtt);
+        if (wasReset) {
+            // Log calibration reset event to database
+            if (this.sessionId) {
+                try {
+                    db.logEvent({
+                        sessionId: this.sessionId,
+                        jid: this.targetJid,
+                        eventType: 'calibration_reset',
+                        state: 'Calibration reset (offline→online)',
+                        deviceJid: jid
+                    });
+                } catch (err) {
+                    trackerLogger.debug('[DATABASE] Error logging calibration reset:', err);
+                }
+            }
+
+            // Recalculate state after reset (will return Calibrating...)
+            analysis = this.rttAnalyzer.determineState(
+                metrics.recentRtts,
+                metrics.lastRtt,
+                'Calibrating...'
+            );
+        }
 
         const previousState = metrics.state;
         metrics.state = analysis.state;
@@ -644,6 +709,17 @@ export class WhatsAppTracker {
 
                 // Log state change if different from previous
                 if (previousState !== analysis.state && analysis.state !== 'Calibrating...') {
+                    // Log calibration_end when transitioning from Calibrating to actual state
+                    if (previousState === 'Calibrating...') {
+                        db.logEvent({
+                            sessionId: this.sessionId,
+                            jid: this.targetJid,
+                            eventType: 'calibration_end',
+                            state: 'Calibration complete',
+                            deviceJid: jid
+                        });
+                    }
+
                     const eventType = analysis.state.toLowerCase() as 'online' | 'offline' | 'standby';
                     db.logEvent({
                         sessionId: this.sessionId,

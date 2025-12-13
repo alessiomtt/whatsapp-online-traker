@@ -4,7 +4,7 @@ import autoTable from 'jspdf-autotable';
 
 // Types
 interface LogEvent {
-    type: 'start' | 'stop' | 'restart' | 'calibration' | 'calibration_end' | 'online' | 'offline' | 'standby';
+    type: 'start' | 'stop' | 'restart' | 'warmup' | 'warmup_end' | 'calibration' | 'calibration_end' | 'calibration_reset' | 'online' | 'offline' | 'standby';
     timestamp: number;
     message: string;
 }
@@ -17,15 +17,16 @@ interface ExportData {
     profilePic?: string;
 }
 
-// Color scheme
 const COLORS = {
     primaryGreen: '#1B5E20',
     lightGreen: '#E8F5E9',
     accentGreen: '#4CAF50',
-    online: '#2E7D32',
-    standby: '#F9A825',
-    offline: '#C62828',
-    calibration: '#1565C0',
+    online: '#2E7D32',       // verde
+    standby: '#F9A825',      // giallo
+    offline: '#C62828',      // rosso
+    calibration: '#1565C0',  // blu
+    warmup: '#7C3AED',       // viola
+    neutral: '#6B7280',      // grigio neutro
     white: '#FFFFFF',
     gray: '#757575',
 };
@@ -35,28 +36,35 @@ const EVENT_MESSAGES: Record<string, string> = {
     start: 'Monitoraggio avviato',
     restart: 'Monitoraggio riavviato',
     stop: 'Monitoraggio interrotto',
+    warmup: 'Warmup avviato',
+    warmup_end: 'Warmup completato',
     calibration: 'Calibrazione in corso',
     calibration_end: 'Calibrazione completata',
+    calibration_reset: 'Calibrazione resettata',
     online: 'Online',
     standby: 'Standby',
     offline: 'Offline',
 };
 
-// Get color for event type
 function getEventColor(type: string): string {
     switch (type) {
         case 'start':
         case 'restart':
-        case 'calibration':
-            return COLORS.calibration;
-        case 'calibration_end':
-        case 'online':
-            return COLORS.online;
-        case 'standby':
-            return COLORS.standby;
-        case 'offline':
         case 'stop':
-            return COLORS.offline;
+            return COLORS.neutral;  // neutro - sfondo bianco
+        case 'warmup':
+        case 'warmup_end':
+            return COLORS.warmup;   // viola
+        case 'calibration':
+        case 'calibration_end':
+        case 'calibration_reset':
+            return COLORS.calibration;  // blu
+        case 'online':
+            return COLORS.online;   // verde
+        case 'standby':
+            return COLORS.standby;  // giallo
+        case 'offline':
+            return COLORS.offline;  // rosso
         default:
             return COLORS.gray;
     }
@@ -370,21 +378,24 @@ export async function exportToPDF(data: ExportData): Promise<void> {
                 // Color the event column based on event type
                 const eventText = data.cell.raw as string;
 
+                // Color scheme: Online=green, Standby=yellow, Offline=red, Start/Stop=gray, Warmup=purple, Calibration=blue
                 if (eventText.includes('Online')) {
-                    data.cell.styles.textColor = [46, 125, 50];
+                    data.cell.styles.textColor = [46, 125, 50];    // verde
                     data.cell.styles.fontStyle = 'bold';
                 } else if (eventText.includes('Standby')) {
-                    data.cell.styles.textColor = [249, 168, 37];
+                    data.cell.styles.textColor = [249, 168, 37];   // giallo
                     data.cell.styles.fontStyle = 'bold';
-                } else if (eventText.includes('Offline') || eventText.includes('interrotto')) {
-                    data.cell.styles.textColor = [198, 40, 40];
+                } else if (eventText.includes('Offline')) {
+                    data.cell.styles.textColor = [198, 40, 40];    // rosso
                     data.cell.styles.fontStyle = 'bold';
-                } else if (eventText.includes('avviato') || eventText.includes('riavviato') || eventText.includes('Calibrazione in corso')) {
-                    data.cell.styles.textColor = [21, 101, 192];
+                } else if (eventText.includes('Warmup')) {
+                    data.cell.styles.textColor = [124, 58, 237];   // viola
                     data.cell.styles.fontStyle = 'bold';
-                } else if (eventText.includes('completata')) {
-                    data.cell.styles.textColor = [46, 125, 50];
+                } else if (eventText.includes('Calibrazione')) {
+                    data.cell.styles.textColor = [21, 101, 192];   // blu
                     data.cell.styles.fontStyle = 'bold';
+                } else if (eventText.includes('avviato') || eventText.includes('riavviato') || eventText.includes('interrotto')) {
+                    data.cell.styles.textColor = [107, 114, 128];  // grigio neutro
                 }
             }
         },

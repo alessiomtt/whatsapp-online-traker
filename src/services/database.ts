@@ -42,7 +42,7 @@ export interface ActivityLog {
 export interface LogEventData {
     sessionId: number;
     jid: string;
-    eventType: 'rtt' | 'online' | 'offline' | 'standby' | 'calibrating' | 'start' | 'stop';
+    eventType: 'rtt' | 'online' | 'offline' | 'standby' | 'warmup' | 'warmup_end' | 'calibrating' | 'calibration_end' | 'calibration_reset' | 'start' | 'stop';
     rttValue?: number;
     avgRtt?: number;
     medianRtt?: number;
@@ -516,7 +516,7 @@ export function getActivityEventsInRange(
         SELECT al.* FROM activity_logs al
         INNER JOIN sessions s ON al.session_id = s.id
         WHERE s.jid = ? 
-          AND al.event_type IN ('online', 'offline', 'standby', 'start', 'stop', 'calibrating', 'calibration_end')
+          AND al.event_type IN ('online', 'offline', 'standby', 'start', 'stop', 'warmup', 'warmup_end', 'calibrating', 'calibration_end', 'calibration_reset')
           AND al.timestamp >= ?
           AND al.timestamp <= ?
         ORDER BY al.timestamp ASC
@@ -532,7 +532,7 @@ export function getActivityEventsForComparison(jid: string): ActivityLog[] {
         SELECT al.* FROM activity_logs al
         INNER JOIN sessions s ON al.session_id = s.id
         WHERE s.jid = ? 
-          AND al.event_type IN ('online', 'offline', 'standby', 'start', 'stop', 'calibrating', 'calibration_end')
+          AND al.event_type IN ('online', 'offline', 'standby', 'start', 'stop', 'warmup', 'warmup_end', 'calibrating', 'calibration_end', 'calibration_reset')
         ORDER BY al.timestamp ASC
     `).all(jid) as ActivityLog[];
 }

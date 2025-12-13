@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceArea } from 'recharts';
-import { Square, Activity, Wifi, Smartphone, Monitor, ChevronDown, ChevronUp, Edit2, Zap, Check, X, History, ArrowLeft, Play, AlertCircle, Archive, RotateCcw, CheckCircle, FileSpreadsheet, FileText } from 'lucide-react';
+import { Square, Activity, Wifi, Smartphone, Monitor, ChevronDown, ChevronUp, Edit2, Zap, Check, X, History, ArrowLeft, Play, AlertCircle, Archive, RotateCcw, CheckCircle, FileSpreadsheet, FileText, RefreshCw } from 'lucide-react';
 import clsx from 'clsx';
 import { exportToExcel, exportToPDF } from '../utils/exportUtils';
 import { socket } from '../App';
@@ -99,7 +99,7 @@ export function ContactCard({
 
     // Activity log from database
     interface LogEvent {
-        type: 'start' | 'stop' | 'restart' | 'calibration' | 'calibration_end' | 'online' | 'offline' | 'standby';
+        type: 'start' | 'stop' | 'restart' | 'warmup' | 'warmup_end' | 'calibration' | 'calibration_end' | 'calibration_reset' | 'online' | 'offline' | 'standby';
         timestamp: number;
         message: string;
     }
@@ -765,11 +765,16 @@ export function ContactCard({
                                             const getEventIcon = () => {
                                                 switch (event.type) {
                                                     case 'start':
-                                                        return <Play size={14} className="text-blue-600" />;
+                                                    case 'stop':
+                                                    case 'restart':
+                                                        return <Play size={14} className="text-gray-500" />;
+                                                    case 'warmup':
+                                                    case 'warmup_end':
+                                                        return <Activity size={14} className="text-purple-600" />;
                                                     case 'calibration':
-                                                        return <Activity size={14} className="text-blue-600" />;
                                                     case 'calibration_end':
-                                                        return <CheckCircle size={14} className="text-green-600" />;
+                                                    case 'calibration_reset':
+                                                        return <Activity size={14} className="text-blue-600" />;
                                                     case 'online':
                                                         return <Zap size={14} className="text-green-600 fill-green-600" />;
                                                     case 'standby':
@@ -785,17 +790,21 @@ export function ContactCard({
                                                 switch (event.type) {
                                                     case 'start':
                                                     case 'restart':
-                                                    case 'calibration':
-                                                        return 'text-blue-800';
-                                                    case 'calibration_end':
-                                                        return 'text-green-800';
-                                                    case 'offline':
                                                     case 'stop':
-                                                        return 'text-red-800';
+                                                        return 'text-gray-700';       // neutro
+                                                    case 'warmup':
+                                                    case 'warmup_end':
+                                                        return 'text-purple-800';     // viola
+                                                    case 'calibration':
+                                                    case 'calibration_end':
+                                                    case 'calibration_reset':
+                                                        return 'text-blue-800';       // blu
                                                     case 'online':
-                                                        return 'text-green-800';
+                                                        return 'text-green-800';      // verde
                                                     case 'standby':
-                                                        return 'text-yellow-800';
+                                                        return 'text-yellow-800';     // giallo
+                                                    case 'offline':
+                                                        return 'text-red-800';        // rosso
                                                     default:
                                                         return 'text-gray-800';
                                                 }
