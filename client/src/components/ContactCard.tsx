@@ -232,9 +232,11 @@ export function ContactCard({
 
         for (let i = 1; i < chartData.length; i++) {
             if (chartData[i].state !== currentState) {
+                // Use chartData[i].timestamp (not i-1) to extend the area to the point where state changes
+                // This prevents zero-width areas when state changes rapidly (e.g., during spikes)
                 areas.push({
                     x1: chartData[startIndex].timestamp,
-                    x2: chartData[i - 1].timestamp,
+                    x2: chartData[i].timestamp,
                     state: currentState,
                     color: getStateColor(currentState)
                 });
