@@ -170,12 +170,16 @@ export class WhatsAppTracker {
                 // WhatsApp may return ACKs with LID even when we send to @s.whatsapp.net
                 // The important thing is that it's fromMe (our probe) and directed at our target
                 if (remoteJid && update.key.fromMe) {
-                    // Check if this matches our target (direct or via LID)
+                    // Extract base number from device JID (e.g., "15109129852:22@s.whatsapp.net" -> "15109129852")
+                    const baseNumber = remoteJid.split('@')[0].split(':')[0];
+
+                    // Check if this matches our target (direct, via LID, or via device JID)
                     const isMainTarget = this.trackedJids.has(remoteJid);
                     const isLidForTarget = remoteJid.endsWith('@lid');
+                    const isDeviceJid = this.trackedJids.has(`${baseNumber}@s.whatsapp.net`);
 
-                    if (isMainTarget || isLidForTarget) {
-                        // Always use the main targetJid for metrics, not the LID
+                    if (isMainTarget || isLidForTarget || isDeviceJid) {
+                        // Always use the main targetJid for metrics, not the LID or device JID
                         // This ensures all RTT data goes to the same device entry
                         this.analyzeUpdate(update, this.targetJid);
                     }
@@ -442,13 +446,21 @@ export class WhatsAppTracker {
                 const msgId = attrs.id;
                 const fromJid = attrs.from;
 
-                if (!msgId || !fromJid) return;
+                // Guard against missing from attribute
+                if (!msgId || !fromJid) {
+                    trackerLogger.debug('[RAW RECEIPT] Missing msgId or from JID in receipt');
+                    return;
+                }
 
-                // Check if this is from our target (direct or via LID)
+                // Extract base number from device JID (e.g., "15109129852:22@s.whatsapp.net" -> "15109129852")
+                const baseNumber = fromJid.split('@')[0].split(':')[0];
+
+                // Check if this is from our target (direct, via LID, or via device JID)
                 const isMainTarget = this.trackedJids.has(fromJid);
                 const isLidForTarget = fromJid.endsWith('@lid');
+                const isDeviceJid = this.trackedJids.has(`${baseNumber}@s.whatsapp.net`);
 
-                if (isMainTarget || isLidForTarget) {
+                if (isMainTarget || isLidForTarget || isDeviceJid) {
                     // Process as a valid response - device is in standby but responded
                     const startTime = this.probeStartTimes.get(msgId);
 
