@@ -186,7 +186,7 @@ function App() {
         thresholdMultiplier: 0.9,
         calibrationProbeCount: 5,
         warmupEnabled: false,
-        warmupProbeCount: 2,
+        warmupProbeCount: 10,
         outlierFilterEnabled: false,
         defaultProbeMethod: 'delete'
     });
@@ -196,7 +196,7 @@ function App() {
         offlineThreshold: '10000',
         thresholdMultiplier: '0.9',
         calibrationProbeCount: '5',
-        warmupProbeCount: '2'
+        warmupProbeCount: '10'
     });
     const [configLoading, setConfigLoading] = useState(false);
     const [configSaving, setConfigSaving] = useState(false);
@@ -265,7 +265,7 @@ function App() {
             thresholdMultiplier: parseFloat(configFormStrings.thresholdMultiplier) || 0.9,
             calibrationProbeCount: parseInt(configFormStrings.calibrationProbeCount) || 5,
             warmupEnabled: configForm.warmupEnabled,
-            warmupProbeCount: parseInt(configFormStrings.warmupProbeCount) || 2,
+            warmupProbeCount: parseInt(configFormStrings.warmupProbeCount) || 10,
             outlierFilterEnabled: configForm.outlierFilterEnabled,
             defaultProbeMethod: configForm.defaultProbeMethod
         };
@@ -524,7 +524,7 @@ function App() {
                                             />
                                         </label>
                                         <p className="text-xs text-gray-500">
-                                            <span className="font-medium">Consigliato: 1-5</span> | Default: 2
+                                            <span className="font-medium">Consigliato: 5-15</span> | Default: 10
                                         </p>
                                     </div>
                                 )}

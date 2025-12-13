@@ -695,7 +695,7 @@ export class WhatsAppTracker {
 
         // Get calibration progress for the first device (main contact)
         const firstDevice = devices[0];
-        let calibrationProgress: { current: number; total: number; warmupRemaining?: number } | undefined;
+        let calibrationProgress: { current: number; total: number; warmupRemaining?: number; warmupTotal?: number } | undefined;
         if (firstDevice && firstDevice.state === 'Calibrating...') {
             const analysis = this.rttAnalyzer.determineState([], 0, 'Calibrating...');
             calibrationProgress = analysis.calibrationProgress;

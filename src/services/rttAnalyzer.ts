@@ -19,6 +19,7 @@ export interface StateAnalysisResult {
         current: number;
         total: number;
         warmupRemaining?: number;
+        warmupTotal?: number;
     };
 }
 
@@ -38,6 +39,11 @@ export class RttAnalyzer {
 
     // Track minimum RTT seen (for outlier detection)
     private minRttSeen: number = Infinity;
+
+    // State confirmation (anti-flickering)
+    private confirmedState: string = 'Calibrating...';  // Current confirmed state
+    private pendingState: string | null = null;         // State waiting for confirmation
+    private confirmationCount: number = 0;              // Consecutive calculations in pending state
 
     /**
      * Add RTT measurement to global history
@@ -208,22 +214,74 @@ export class RttAnalyzer {
             ? Math.max(0, editableConfig.warmupProbeCount - this.warmupCount)
             : 0;
 
-        let state: string;
-        let calibrationProgress: { current: number; total: number; warmupRemaining?: number } | undefined;
+        let rawState: string;  // State before confirmation
+        let calibrationProgress: { current: number; total: number; warmupRemaining?: number; warmupTotal?: number } | undefined;
 
         if (historySize >= calibrationRequired) {
             // State determination: compare moving average to threshold
             // Moving average below threshold = Active (device responding quickly)
             // Moving average above threshold = Standby (device responding slowly)
-            state = movingAvg < threshold ? 'Online' : 'Standby';
+            rawState = movingAvg < threshold ? 'Online' : 'Standby';
         } else {
             // Not enough data points yet - still calibrating
-            state = 'Calibrating...';
+            rawState = 'Calibrating...';
             calibrationProgress = {
                 current: historySize,
                 total: calibrationRequired,
-                warmupRemaining: warmupRemaining > 0 ? warmupRemaining : undefined
+                warmupRemaining: warmupRemaining > 0 ? warmupRemaining : undefined,
+                warmupTotal: editableConfig.warmupEnabled ? editableConfig.warmupProbeCount : undefined
             };
+        }
+
+        // State Confirmation (Anti-flickering)
+        // Only apply to Online/Standby states (not during calibration)
+        let confirmedState = rawState;
+
+        if (editableConfig.stateConfirmationEnabled && rawState !== 'Calibrating...') {
+            const requiredConfirmations = editableConfig.stateConfirmationCount;
+
+            // CRITICAL: If we just exited calibration, immediately accept the new state
+            // Don't require confirmations for the initial transition from Calibrating -> Online/Standby
+            if (this.confirmedState === 'Calibrating...') {
+                this.confirmedState = rawState;
+                this.pendingState = null;
+                this.confirmationCount = 0;
+                confirmedState = rawState;
+                console.log(`[RTT ANALYZER] Calibration complete! Initial state: ${rawState}`);
+            } else if (rawState === this.confirmedState) {
+                // Same as confirmed state - reset any pending transition
+                this.pendingState = null;
+                this.confirmationCount = 0;
+                confirmedState = this.confirmedState;
+            } else if (rawState === this.pendingState) {
+                // Same as pending state - increment confirmation count
+                this.confirmationCount++;
+
+                if (this.confirmationCount >= requiredConfirmations) {
+                    // Confirmed! Transition to new state
+                    this.confirmedState = rawState;
+                    this.pendingState = null;
+                    this.confirmationCount = 0;
+                    confirmedState = rawState;
+                    console.log(`[RTT ANALYZER] State confirmed: ${rawState} (after ${requiredConfirmations} consecutive triggers)`);
+                } else {
+                    // Still waiting for more confirmations
+                    confirmedState = this.confirmedState;
+                }
+            } else {
+                // New pending state - start counting
+                this.pendingState = rawState;
+                this.confirmationCount = 1;
+                confirmedState = this.confirmedState;  // Keep old state until confirmed
+            }
+        } else if (rawState === 'Calibrating...') {
+            // During calibration, just follow raw state
+            this.confirmedState = rawState;
+            confirmedState = rawState;
+        } else {
+            // State confirmation disabled - use raw state directly
+            this.confirmedState = rawState;
+            confirmedState = rawState;
         }
 
         // Ensure we have valid values (should not be 0 if we have enough data)
@@ -234,7 +292,7 @@ export class RttAnalyzer {
         return {
             median,
             threshold,
-            state,
+            state: confirmedState,
             movingAvg,
             calibrationProgress
         };
@@ -275,5 +333,9 @@ export class RttAnalyzer {
         this.warmupCount = 0;
         this.totalProbeCount = 0;
         this.minRttSeen = Infinity;
+        // Reset state confirmation
+        this.confirmedState = 'Calibrating...';
+        this.pendingState = null;
+        this.confirmationCount = 0;
     }
 }

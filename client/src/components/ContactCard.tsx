@@ -40,6 +40,7 @@ interface ContactCardProps {
         current: number;
         total: number;
         warmupRemaining?: number;
+        warmupTotal?: number;
     };
 }
 
@@ -924,8 +925,8 @@ export function ContactCard({
                                                             : "bg-blue-500"
                                                     )}
                                                     style={{
-                                                        width: calibrationProgress.warmupRemaining && calibrationProgress.warmupRemaining > 0
-                                                            ? '10%'  // Show minimal progress during warmup
+                                                        width: calibrationProgress.warmupRemaining && calibrationProgress.warmupRemaining > 0 && calibrationProgress.warmupTotal
+                                                            ? `${((calibrationProgress.warmupTotal - calibrationProgress.warmupRemaining) / calibrationProgress.warmupTotal) * 100}%`
                                                             : `${(calibrationProgress.current / calibrationProgress.total) * 100}%`
                                                     }}
                                                 />

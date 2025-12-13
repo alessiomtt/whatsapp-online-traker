@@ -43,6 +43,9 @@ export interface EditableConfig {
     outlierFilterEnabled: boolean;  // Filter outliers > 3x median during calibration
     // Probe method settings
     defaultProbeMethod: 'reaction' | 'delete';  // Default method for new sessions
+    // State confirmation (anti-flickering)
+    stateConfirmationEnabled: boolean;  // Require consecutive confirmations before state change
+    stateConfirmationCount: number;     // Number of consecutive same-state calculations required (default 3)
 }
 
 // Path to custom config file
@@ -83,9 +86,11 @@ export function getDefaultEditableConfig(): EditableConfig {
         thresholdMultiplier: defaultConfig.thresholdMultiplier,
         calibrationProbeCount: 5,
         warmupEnabled: false,
-        warmupProbeCount: 2,
+        warmupProbeCount: 10,
         outlierFilterEnabled: false,
-        defaultProbeMethod: 'delete'  // Default to silent delete method
+        defaultProbeMethod: 'delete',  // Default to silent delete method
+        stateConfirmationEnabled: true,  // Anti-flickering enabled by default
+        stateConfirmationCount: 3        // Require 3 consecutive same-state calculations
     };
 }
 
@@ -164,7 +169,9 @@ export function getCurrentEditableConfig(): EditableConfig {
             warmupEnabled: custom.warmupEnabled ?? defaults.warmupEnabled,
             warmupProbeCount: custom.warmupProbeCount ?? defaults.warmupProbeCount,
             outlierFilterEnabled: custom.outlierFilterEnabled ?? defaults.outlierFilterEnabled,
-            defaultProbeMethod: custom.defaultProbeMethod ?? defaults.defaultProbeMethod
+            defaultProbeMethod: custom.defaultProbeMethod ?? defaults.defaultProbeMethod,
+            stateConfirmationEnabled: custom.stateConfirmationEnabled ?? defaults.stateConfirmationEnabled,
+            stateConfirmationCount: custom.stateConfirmationCount ?? defaults.stateConfirmationCount
         };
     }
 
