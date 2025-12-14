@@ -9,26 +9,28 @@
 
 const debugMode = process.argv.includes('--debug') || process.argv.includes('-d');
 const originalConsoleLog = console.log;
+const originalConsoleInfo = console.info;
 const originalStdoutWrite = process.stdout.write.bind(process.stdout);
 
 // prevents Baileys from spamming the console
 const shouldSuppressOutput = (message: string): boolean => {
     return message.includes('Closing session:') ||
-           message.includes('SessionEntry') ||
-           message.includes('_chains') ||
-           message.includes('registrationId') ||
-           message.includes('currentRatchet') ||
-           message.includes('ephemeralKeyPair') ||
-           message.includes('pendingPreKey') ||
-           message.includes('indexInfo') ||
-           message.includes('baseKey') ||
-           message.includes('remoteIdentityKey') ||
-           message.includes('lastRemoteEphemeralKey') ||
-           message.includes('previousCounter') ||
-           message.includes('rootKey') ||
-           message.includes('signedKeyId') ||
-           message.includes('preKeyId') ||
-           message.includes('<Buffer');
+        message.includes('Removing old closed session:') ||
+        message.includes('SessionEntry') ||
+        message.includes('_chains') ||
+        message.includes('registrationId') ||
+        message.includes('currentRatchet') ||
+        message.includes('ephemeralKeyPair') ||
+        message.includes('pendingPreKey') ||
+        message.includes('indexInfo') ||
+        message.includes('baseKey') ||
+        message.includes('remoteIdentityKey') ||
+        message.includes('lastRemoteEphemeralKey') ||
+        message.includes('previousCounter') ||
+        message.includes('rootKey') ||
+        message.includes('signedKeyId') ||
+        message.includes('preKeyId') ||
+        message.includes('<Buffer');
 };
 
 if (!debugMode) {
@@ -54,6 +56,14 @@ if (!debugMode) {
         }
         return originalStdoutWrite(chunk, encoding, callback);
     }) as typeof process.stdout.write;
+
+    // Override console.info (used by libsignal)
+    console.info = (...args: any[]) => {
+        const message = String(args[0] || '');
+        if (!shouldSuppressOutput(message)) {
+            originalConsoleInfo(...args);
+        }
+    };
 }
 
 // Now safe to import modules

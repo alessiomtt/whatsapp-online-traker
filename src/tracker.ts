@@ -353,8 +353,8 @@ export class WhatsAppTracker {
             };
 
             trackerLogger.debug(`[PROBE-DELETE] Sending silent delete probe for fake message ${randomMsgId}`);
-            const startTime = Date.now();
             const result = await this.sock.sendMessage(this.targetJid, deleteMessage);
+            const startTime = Date.now();
 
             if (result?.key?.id) {
                 trackerLogger.debug(`[PROBE-DELETE] Delete probe sent successfully, message ID: ${result.key.id}`);
