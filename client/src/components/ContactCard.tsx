@@ -321,7 +321,9 @@ export function ContactCard({
             if (state.includes('Online')) return 'rgba(34, 197, 94, 0.15)'; // green
             if (state === 'Standby') return 'rgba(234, 179, 8, 0.15)'; // yellow
             if (state === 'OFFLINE') return 'rgba(239, 68, 68, 0.15)'; // red
-            return 'rgba(156, 163, 175, 0.1)'; // gray for calibrating
+            if (state.includes('Calibrating')) return 'rgba(59, 130, 246, 0.15)'; // blue
+            if (state.includes('Warmup')) return 'rgba(168, 85, 247, 0.15)'; // purple
+            return 'rgba(156, 163, 175, 0.1)'; // gray for unknown
         };
 
         for (let i = 1; i < chartData.length; i++) {
