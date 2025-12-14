@@ -167,7 +167,17 @@ io.on('connection', (socket) => {
         socket.emit('connection-open');
     }
 
-    socket.emit('tracked-contacts', Array.from(trackers.keys()));
+    // Send active contacts on connect
+    const activeSessions = db.getActiveSessions();
+    socket.emit('tracked-contacts', activeSessions.map(s => ({
+        jid: s.jid,
+        phoneNumber: s.phone_number,
+        customName: s.custom_name,
+        profilePic: s.profile_pic_url,
+        startedAt: s.started_at,
+        sessionId: s.id,
+        probeMethod: s.probe_method
+    })));
 
     // Send archived contacts on connect
     const archivedSessions = db.getArchivedSessions();
@@ -460,6 +470,19 @@ io.on('connection', (socket) => {
         } else {
             socket.emit('error', { jid: data.jid, message: 'Tracker not found' });
         }
+    });
+
+    socket.on('get-active', () => {
+        const activeSessions = db.getActiveSessions();
+        socket.emit('tracked-contacts', activeSessions.map(s => ({
+            jid: s.jid,
+            phoneNumber: s.phone_number,
+            customName: s.custom_name,
+            profilePic: s.profile_pic_url,
+            startedAt: s.started_at,
+            sessionId: s.id,
+            probeMethod: s.probe_method
+        })));
     });
 
     socket.on('get-archived', () => {

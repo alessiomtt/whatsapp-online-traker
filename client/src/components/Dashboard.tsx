@@ -73,11 +73,47 @@ export function Dashboard({ privacyMode, onOpenCompare }: DashboardProps) {
 
 
     // Request archived and stopped contacts from server on mount
+    // Request active, archived and stopped contacts from server on mount
     useEffect(() => {
+        socket.emit('get-active');
         socket.emit('get-archived');
         socket.emit('get-stopped');
     }, []);
+    // Listen for supported active contacts from server
+    useEffect(() => {
+        function onTrackedContacts(data: any[]) {
+            setContacts(prev => {
+                const next = new Map(prev);
+                data.forEach(s => {
+                    // Update or add active contact
+                    // If it already exists (e.g. from local state) we update it, 
+                    // but we preserve data/devices if strictly necessary. 
+                    // Usually connection means we should refresh state.
+                    const existing = next.get(s.jid);
 
+                    next.set(s.jid, {
+                        jid: s.jid,
+                        displayNumber: s.phoneNumber,
+                        contactName: s.customName || s.phoneNumber,
+                        data: existing ? existing.data : [],
+                        devices: existing ? existing.devices : [],
+                        deviceCount: existing ? existing.deviceCount : 0,
+                        presence: existing ? existing.presence : null,
+                        profilePic: s.profilePic,
+                        isStopped: false,
+                        sessionId: s.sessionId,
+                        probeMethod: s.probeMethod
+                    });
+                });
+                return next;
+            });
+        }
+
+        socket.on('tracked-contacts', onTrackedContacts);
+        return () => {
+            socket.off('tracked-contacts', onTrackedContacts);
+        };
+    }, []);
 
     useEffect(() => {
         function onTrackerUpdate(update: any) {
