@@ -338,7 +338,21 @@ io.on('connection', (socket) => {
                 const savedProbeMethod = (session.probe_method || configDefault) as ProbeMethod;
                 const trackerContactName = session.custom_name || validation.cleaned;
 
-                const tracker = new WhatsAppTracker(sock, result.jid, false, session.id, savedProbeMethod, trackerContactName);
+                // Load custom configuration if exists
+                const customConfig = db.getSessionConfig(result.jid);
+                if (Object.keys(customConfig).length > 0) {
+                    console.log(`[SESSION] Loaded custom config for ${result.jid}:`, customConfig);
+                }
+
+                const tracker = new WhatsAppTracker(
+                    sock,
+                    result.jid,
+                    false,
+                    session.id,
+                    savedProbeMethod,
+                    trackerContactName,
+                    customConfig // Pass custom config
+                );
                 trackers.set(result.jid, tracker);
 
                 tracker.onUpdate = (data) => {
@@ -470,6 +484,33 @@ io.on('connection', (socket) => {
         } else {
             socket.emit('error', { jid: data.jid, message: 'Tracker not found' });
         }
+    });
+
+    // Set custom configuration for a specific contact
+    socket.on('update-session-config', (data: { jid: string, config: Partial<EditableConfig> }) => {
+        console.log(`[CONFIG] Request to update config for ${data.jid}:`, data.config);
+
+        // 1. Update active tracker if exists
+        const tracker = trackers.get(data.jid);
+        if (tracker) {
+            tracker.updateConfig(data.config);
+            console.log(`[CONFIG] Active tracker updated`);
+        } else {
+            console.log(`[CONFIG] No active tracker - config will be applied next time`);
+        }
+
+        // 2. Persist to database
+        db.updateSessionConfig(data.jid, data.config);
+
+        // 3. Notify clients (so UI updates)
+        io.emit('session-config-updated', { jid: data.jid, config: data.config });
+    });
+
+    // Get session config
+    socket.on('get-session-config', (jid: string) => {
+        const config = db.getSessionConfig(jid);
+        const defaults = getCurrentEditableConfig();
+        socket.emit('session-config', { jid, config, defaults });
     });
 
     socket.on('get-active', () => {

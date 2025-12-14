@@ -8,7 +8,7 @@
  * Based on research methodology from "Careless Whisper" paper.
  */
 
-import { config, getCurrentEditableConfig } from '../config';
+import { config, getCurrentEditableConfig, EditableConfig } from '../config';
 
 export interface StateAnalysisResult {
     median: number;
@@ -32,6 +32,9 @@ export class RttAnalyzer {
     private cachedThreshold: number = 0;
     private lastCalculationSize: number = 0;
     private readonly RECALCULATION_INTERVAL = 10; // Recalculate every 10 measurements
+
+    // Per-instance configuration override
+    private configOverride: Partial<EditableConfig> = {};
 
     // Warmup tracking
     private warmupCount: number = 0;
@@ -58,11 +61,30 @@ export class RttAnalyzer {
     private calibrationStarted: boolean = false;
 
     /**
+     * Set per-instance configuration override
+     */
+    setConfigOverride(config: Partial<EditableConfig>) {
+        this.configOverride = config;
+        // Invalidate cache when config changes (e.g. threshold multiplier)
+        this.cachedThreshold = 0;
+    }
+
+    /**
+     * Get effective configuration (global defaults + overrides)
+     */
+    private getEffectiveConfig(): EditableConfig {
+        return {
+            ...getCurrentEditableConfig(),
+            ...this.configOverride
+        };
+    }
+
+    /**
      * Add RTT measurement to global history
      * @param rtt Round-trip time in milliseconds
      */
     addMeasurement(rtt: number): void {
-        const editableConfig = getCurrentEditableConfig();
+        const editableConfig = this.getEffectiveConfig();
         this.totalProbeCount++;
 
         // Warmup: skip first N probes if enabled
@@ -146,7 +168,7 @@ export class RttAnalyzer {
 
         // Update cache
         this.cachedMedian = median;
-        this.cachedThreshold = median * config.thresholdMultiplier;
+        this.cachedThreshold = median * this.getEffectiveConfig().thresholdMultiplier;
         this.lastCalculationSize = this.globalRttHistory.length;
 
         return median;
@@ -170,7 +192,7 @@ export class RttAnalyzer {
         }
 
         // Recalculate threshold
-        const threshold = median * config.thresholdMultiplier;
+        const threshold = median * this.getEffectiveConfig().thresholdMultiplier;
         this.cachedThreshold = threshold;
 
         return threshold;
@@ -212,13 +234,14 @@ export class RttAnalyzer {
 
         let median = this.cachedMedian;
         let threshold = this.cachedThreshold;
+        const effectiveConfig = this.getEffectiveConfig(); // Get merged config
 
         if (shouldRecalculate && historySize >= config.recentRttCount) {
             // Recalculate median and threshold
             const sorted = [...this.globalRttHistory].sort((a, b) => a - b);
             const mid = Math.floor(sorted.length / 2);
             median = sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
-            threshold = median * config.thresholdMultiplier;
+            threshold = median * effectiveConfig.thresholdMultiplier;
 
             // Update cache
             this.cachedMedian = median;
@@ -229,7 +252,7 @@ export class RttAnalyzer {
             const sorted = [...this.globalRttHistory].sort((a, b) => a - b);
             const mid = Math.floor(sorted.length / 2);
             median = sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
-            threshold = median * config.thresholdMultiplier;
+            threshold = median * effectiveConfig.thresholdMultiplier;
 
             // Update cache
             this.cachedMedian = median;
@@ -237,7 +260,7 @@ export class RttAnalyzer {
             this.lastCalculationSize = historySize;
         }
 
-        const editableConfig = getCurrentEditableConfig();
+        const editableConfig = effectiveConfig;
         const calibrationRequired = editableConfig.calibrationProbeCount;
         const warmupRemaining = editableConfig.warmupEnabled
             ? Math.max(0, editableConfig.warmupProbeCount - this.warmupCount)

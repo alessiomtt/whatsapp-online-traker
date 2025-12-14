@@ -1,6 +1,6 @@
 import '@whiskeysockets/baileys';
 import { WASocket, proto } from '@whiskeysockets/baileys';
-import { config } from './config';
+import { config, EditableConfig } from './config';
 import { RttAnalyzer, StateAnalysisResult } from './services/rttAnalyzer';
 import * as db from './services/database';
 
@@ -125,11 +125,25 @@ export class WhatsAppTracker {
     // Contact name for logging
     private contactName: string | null = null;
 
-    constructor(sock: WASocket, targetJid: string, debugMode: boolean = false, sessionId?: number, probeMethod: ProbeMethod = 'reaction', contactName?: string) {
+    constructor(
+        sock: WASocket,
+        targetJid: string,
+        debugMode: boolean = false,
+        sessionId?: number,
+        probeMethod: ProbeMethod = 'reaction',
+        contactName?: string,
+        customConfig?: Partial<EditableConfig>
+    ) {
         this.sock = sock;
         this.targetJid = targetJid;
         this.trackedJids.add(targetJid);
         this.rttAnalyzer = new RttAnalyzer();
+
+        // Apply custom configuration if provided
+        if (customConfig) {
+            this.rttAnalyzer.setConfigOverride(customConfig);
+        }
+
         this.sessionId = sessionId ?? null;
         this.probeMethod = probeMethod;
         this.contactName = contactName ?? null;
@@ -184,6 +198,14 @@ export class WhatsAppTracker {
      */
     public getProbeMethod(): ProbeMethod {
         return this.probeMethod;
+    }
+
+    /**
+     * Update tracker configuration dynamically
+     */
+    updateConfig(config: Partial<EditableConfig>) {
+        this.rttAnalyzer.setConfigOverride(config);
+        trackerLogger.info(`[TRACKER] Updated configuration for ${this.targetJid}`, config);
     }
 
     /**

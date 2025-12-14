@@ -1,9 +1,10 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceArea } from 'recharts';
-import { Square, Activity, Wifi, Smartphone, Monitor, ChevronDown, ChevronUp, Edit2, Zap, Check, X, History, ArrowLeft, Play, AlertCircle, Archive, RotateCcw, CheckCircle, FileSpreadsheet, FileText, RefreshCw } from 'lucide-react';
+import { Square, Activity, Wifi, Smartphone, Monitor, ChevronDown, ChevronUp, Edit2, Zap, Check, X, History, ArrowLeft, Play, AlertCircle, Archive, RotateCcw, CheckCircle, FileSpreadsheet, FileText, RefreshCw, Settings, Save } from 'lucide-react';
 import clsx from 'clsx';
 import { exportToExcel, exportToPDF } from '../utils/exportUtils';
 import { socket } from '../App';
+import { EditableConfig } from '../types'; // Import type
 
 interface TrackerData {
     rtt: number;
@@ -42,6 +43,7 @@ interface ContactCardProps {
         warmupRemaining?: number;
         warmupTotal?: number;
     };
+    onUpdateConfig?: (jid: string, config: Partial<EditableConfig>) => void;
 }
 
 // Interface for DB activity events
@@ -69,7 +71,8 @@ export function ContactCard({
     privacyMode = false,
     onRename,
     probeMethod = 'reaction',
-    calibrationProgress
+    calibrationProgress,
+    onUpdateConfig
 }: ContactCardProps) {
     const lastData = data[data.length - 1];
     const currentStatus = devices.length > 0
@@ -86,12 +89,90 @@ export function ContactCard({
     const [showRestartConfirm, setShowRestartConfirm] = useState(false);
     const [showLog, setShowLog] = useState(false);
 
+    // Settings Modal State
+    const [showSettings, setShowSettings] = useState(false);
+    const [customConfig, setCustomConfig] = useState<Partial<EditableConfig>>({});
+    const [configInput, setConfigInput] = useState<string>('');
+    const [globalDefaults, setGlobalDefaults] = useState<Partial<EditableConfig>>({});
+    const [isSavingConfig, setIsSavingConfig] = useState(false);
+
     // Auto-collapse when stopped
     React.useEffect(() => {
         if (isStopped) {
             setIsCollapsed(true);
         }
     }, [isStopped]);
+
+    // Fetch config when settings opened
+    const handleOpenSettings = () => {
+        socket.emit('get-session-config', jid);
+        setShowSettings(true);
+    };
+
+    // Listen for config data
+    useEffect(() => {
+        const handleConfig = (data: { jid: string, config: Partial<EditableConfig>, defaults?: Partial<EditableConfig> }) => {
+            if (data.jid === jid) {
+                setCustomConfig(data.config);
+                // Pre-fill input with current value or empty (meaning default)
+                setConfigInput(data.config.thresholdMultiplier?.toString() || '');
+                if (data.defaults) {
+                    setGlobalDefaults(data.defaults);
+                }
+            }
+        };
+
+        socket.on('session-config', handleConfig);
+
+        // Also listen for updates to keep sync
+        socket.on('session-config-updated', handleConfig);
+
+        return () => {
+            socket.off('session-config', handleConfig);
+            socket.off('session-config-updated', handleConfig);
+        };
+    }, [jid]);
+
+    const handleSaveConfig = () => {
+        const val = parseFloat(configInput);
+        const newConfig: Partial<EditableConfig> = {};
+
+        if (!isNaN(val) && val > 0) {
+            newConfig.thresholdMultiplier = val;
+        } else if (configInput.trim() === '') {
+            // Empty string means "reset to default", so we send undefined/null or empty object for that key?
+            // Sending explicit undefined via socket might not work well, 
+            // but our backend logic merges. To "unset", we might need a specific strategy.
+            // For now, if empty, we just don't set it in the override object, 
+            // but that won't delete it from DB if it was already there.
+            // Let's assume sending null removes it or we overwrite with full object.
+            // Actually, best way: send what we have. 
+            // If user clears input, we likely want to remove the override.
+            // Our backend `setConfigOverride` replaces the object.
+            // DB merge logic depends on implementation. 
+            // `updateSessionConfig` just saves the JSON. 
+            // So if we send `{}` it clears all overrides.
+            // If we want to clear ONLY multiplier, we should probably fetch current, delete key, send back.
+            // For this MVP, we only have one setting, so `{}` is fine if empty.
+        } else {
+            alert("Inserisci un numero valido maggiore di 0");
+            return;
+        }
+
+        setIsSavingConfig(true);
+        if (onUpdateConfig) {
+            onUpdateConfig(jid, newConfig);
+        } else {
+            // Fallback direct emit if prop missing
+            socket.emit('update-session-config', { jid, config: newConfig });
+        }
+
+        // Close after short delay
+        setTimeout(() => {
+            setIsSavingConfig(false);
+            setShowSettings(false);
+        }, 500);
+    };
 
     // Blur phone number in privacy mode
     const blurredNumber = privacyMode ? displayNumber.replace(/\d/g, '•') : displayNumber;
@@ -379,7 +460,7 @@ export function ContactCard({
     const isOnline = currentStatus.toLowerCase().includes('online');
 
     // Check if any confirmation is showing
-    const showingAnyConfirm = showStopConfirm || showArchiveConfirm || showRestartConfirm;
+    const showingAnyConfirm = showStopConfirm || showArchiveConfirm || showRestartConfirm || showSettings;
 
     return (
         <div className={clsx(
@@ -454,6 +535,19 @@ export function ContactCard({
                                     >
                                         <Edit2 size={14} />
                                     </button>
+                                    {/* Config Button (Gear) */}
+                                    <button
+                                        onClick={handleOpenSettings}
+                                        className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors"
+                                        title="Impostazioni contatto"
+                                    >
+                                        <div className="relative">
+                                            <Settings size={14} />
+                                            {(customConfig.thresholdMultiplier) && (
+                                                <span className="absolute -top-1 -right-1 w-2 h-2 bg-blue-500 rounded-full"></span>
+                                            )}
+                                        </div>
+                                    </button>
                                     {/* Probe Method Toggle - only show when not stopped */}
                                     {!isStopped && (
                                         <button
@@ -505,7 +599,7 @@ export function ContactCard({
 
                     <div className="flex items-center gap-2">
                         {isStopped ? (
-                            /* Stopped State - Log, Terminato, Archivia, Riavvia */
+                            /* Stopped State */
                             <>
                                 <button
                                     onClick={() => {
@@ -534,7 +628,7 @@ export function ContactCard({
                                 </button>
                             </>
                         ) : (
-                            /* Running State - Log, Running indicator, Probe Method Toggle, Stop (far right) */
+                            /* Running State */
                             <>
                                 <button
                                     onClick={() => {
@@ -557,6 +651,46 @@ export function ContactCard({
                                 </button>
                             </>
                         )}
+                    </div>
+                </div>
+            ) : showSettings ? (
+                /* Settings Modal (Inline) */
+                <div className="bg-blue-50 border-b border-blue-100 px-4 py-3 flex items-center justify-between gap-4 animate-in fade-in duration-200">
+                    <div className="flex items-center gap-3 text-blue-800 flex-1">
+                        <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 flex-shrink-0">
+                            <Settings size={16} />
+                        </div>
+                        <div className="flex-1">
+                            <h4 className="font-semibold text-sm mb-1">Impostazioni Specifiche</h4>
+                            <div className="flex items-center gap-2">
+                                <label className="text-xs font-medium text-blue-700">Moltiplicatore Soglia:</label>
+                                <input
+                                    type="number"
+                                    step="0.01"
+                                    min="0.1"
+                                    placeholder={`Default: ${globalDefaults.thresholdMultiplier || '...'}`}
+                                    value={configInput}
+                                    onChange={(e) => setConfigInput(e.target.value)}
+                                    className="w-32 px-2 py-1 text-sm border rounded"
+                                />
+                                <span className="text-xs text-blue-500">(Lascia vuoto per default)</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => setShowSettings(false)}
+                            className="px-3 py-1.5 bg-white border border-gray-200 rounded text-sm font-medium text-gray-600 hover:bg-gray-50"
+                        >
+                            Chiudi
+                        </button>
+                        <button
+                            onClick={handleSaveConfig}
+                            disabled={isSavingConfig}
+                            className="px-3 py-1.5 bg-blue-600 rounded text-sm font-medium text-white hover:bg-blue-700 shadow-sm flex items-center gap-1"
+                        >
+                            {isSavingConfig ? 'Salvataggio...' : <><Save size={14} /> Salva</>}
+                        </button>
                     </div>
                 </div>
             ) : showStopConfirm && isCollapsed ? (
@@ -602,6 +736,52 @@ export function ContactCard({
                     </div>
                 </div>
             ) : null}
+
+            {/* Settings Overlay for Expanded State */}
+            {showSettings && !isCollapsed && (
+                <div className="absolute inset-0 bg-white/95 z-50 flex flex-col items-center justify-center p-6 animate-in fade-in zoom-in-95 duration-200">
+                    <div className="w-16 h-16 rounded-full bg-blue-50 flex items-center justify-center text-blue-600 mb-4 shadow-sm">
+                        <Settings size={32} />
+                    </div>
+                    <h3 className="text-xl font-bold text-gray-900 mb-2">Impostazioni Specifiche</h3>
+                    <p className="text-gray-500 text-center mb-6 max-w-xs text-sm">
+                        Modifica i parametri di analisi per questo contatto.
+                    </p>
+
+                    <div className="w-full max-w-xs space-y-4 mb-6">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Moltiplicatore Soglia</label>
+                            <input
+                                type="number"
+                                step="0.01"
+                                min="0.1"
+                                placeholder={`Default: ${globalDefaults.thresholdMultiplier || '...'}`}
+                                value={configInput}
+                                onChange={(e) => setConfigInput(e.target.value)}
+                                className="w-full px-3 py-2 border border-blue-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                autoFocus
+                            />
+                            <p className="text-xs text-gray-400 mt-1">Lascia vuoto per usare il valore globale.</p>
+                        </div>
+                    </div>
+
+                    <div className="flex gap-3 w-full max-w-xs">
+                        <button
+                            onClick={() => setShowSettings(false)}
+                            className="flex-1 px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition-colors"
+                        >
+                            Annulla
+                        </button>
+                        <button
+                            onClick={handleSaveConfig}
+                            disabled={isSavingConfig}
+                            className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors shadow-sm flex items-center justify-center gap-2"
+                        >
+                            {isSavingConfig ? 'Salvataggio...' : 'Salva'}
+                        </button>
+                    </div>
+                </div>
+            )}
 
             {/* Confirmation Overlay for Expanded State - Stop */}
             {showStopConfirm && !isCollapsed && (

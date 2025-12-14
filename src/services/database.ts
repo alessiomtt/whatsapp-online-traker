@@ -8,7 +8,7 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
-import { getCurrentEditableConfig } from '../config';
+import { getCurrentEditableConfig, EditableConfig } from '../config';
 
 // Database interfaces
 export interface Session {
@@ -119,6 +119,12 @@ export function initDatabase(): Database.Database {
             db.exec(`ALTER TABLE sessions ADD COLUMN probe_method TEXT DEFAULT 'reaction'`);
             console.log('[DATABASE] Migration: Added probe_method column');
         }
+
+        const hasCustomConfig = columns.some(col => col.name === 'custom_config');
+        if (!hasCustomConfig) {
+            db.exec(`ALTER TABLE sessions ADD COLUMN custom_config TEXT`);
+            console.log('[DATABASE] Migration: Added custom_config column');
+        }
     } catch {
         // Column might already exist
     }
@@ -216,6 +222,50 @@ export function updateSessionProbeMethod(jid: string, probeMethod: string): void
     database.prepare(`
         UPDATE sessions SET probe_method = ? WHERE jid = ? AND is_active = 1
     `).run(probeMethod, jid);
+}
+
+/**
+ * Update session custom configuration
+ */
+export function updateSessionConfig(jid: string, config: Partial<EditableConfig>): void {
+    const database = getDatabase();
+    const jsonConfig = JSON.stringify(config);
+    // Determine which session to update: priority to ACTIVE, then STOPPED (most recent), then ARCHIVED
+    // This allows updating settings even if not currently tracking
+
+    // Check for active first
+    const active = database.prepare(`SELECT id FROM sessions WHERE jid = ? AND is_active = 1`).get(jid) as { id: number } | undefined;
+
+    if (active) {
+        database.prepare(`UPDATE sessions SET custom_config = ? WHERE id = ?`).run(jsonConfig, active.id);
+        return;
+    }
+
+    // Check for stopped/archived (most recent)
+    const recent = database.prepare(`SELECT id FROM sessions WHERE jid = ? ORDER BY started_at DESC LIMIT 1`).get(jid) as { id: number } | undefined;
+    if (recent) {
+        database.prepare(`UPDATE sessions SET custom_config = ? WHERE id = ?`).run(jsonConfig, recent.id);
+    }
+}
+
+/**
+ * Get session custom configuration
+ */
+export function getSessionConfig(jid: string): Partial<EditableConfig> {
+    const database = getDatabase();
+    const result = database.prepare(`
+        SELECT custom_config FROM sessions WHERE jid = ? ORDER BY started_at DESC LIMIT 1
+    `).get(jid) as { custom_config: string | null } | undefined;
+
+    if (result && result.custom_config) {
+        try {
+            return JSON.parse(result.custom_config);
+        } catch (e) {
+            console.error('[DATABASE] Error parsing custom_config:', e);
+            return {};
+        }
+    }
+    return {};
 }
 
 /**

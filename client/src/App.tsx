@@ -6,6 +6,7 @@ import { ComparePage } from './components/ComparePage';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { DatabaseUtilities } from './components/DatabaseUtilities';
 import { ArrowLeft, Lock, AlertCircle, Shield, Trash2, LogOut, Eye, EyeOff, Settings, RotateCcw } from 'lucide-react';
+import { EditableConfig } from './types';
 
 export const socket: Socket = io('http://localhost:3001');
 
@@ -164,19 +165,6 @@ function App() {
     };
 
     // Admin: Configuration Management
-    interface EditableConfig {
-        probeIntervalDefault: number;
-        offlineThreshold: number;
-        thresholdMultiplier: number;
-        calibrationProbeCount: number;
-        warmupEnabled: boolean;
-        warmupProbeCount: number;
-        outlierFilterEnabled: boolean;
-        defaultProbeMethod: 'reaction' | 'delete';
-        stateConfirmationEnabled: boolean;
-        stateConfirmationCount: number;
-        standbyThreshold: number;
-    }
 
     const [configData, setConfigData] = useState<{
         current: EditableConfig;
