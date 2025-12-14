@@ -300,8 +300,8 @@ function App() {
         socket.emit('admin-reset-config');
     };
 
-    // Admin Panel Component
-    const AdminPanel = () => (
+    // Admin Panel Content (Avoid defining component inside render to prevent focus loss)
+    const adminPanelContent = (
         <div className="space-y-6">
             <div className="bg-gradient-to-r from-purple-600 to-indigo-600 p-6 rounded-xl shadow-lg">
                 <div className="flex justify-between items-center">
@@ -908,7 +908,7 @@ function App() {
 
                     <main>
                         {showAdminPanel ? (
-                            <AdminPanel />
+                            adminPanelContent
                         ) : showComparePage ? (
                             <ComparePage onBack={() => setShowComparePage(false)} privacyMode={privacyMode} />
                         ) : !isWhatsAppReady ? (
