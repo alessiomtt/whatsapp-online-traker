@@ -248,9 +248,13 @@ export class RttAnalyzer {
 
         if (historySize >= calibrationRequired) {
             // State determination: compare moving average to threshold
-            // Moving average below threshold = Active (device responding quickly)
-            // Moving average above threshold = Standby (device responding slowly)
-            rawState = movingAvg < threshold ? 'Online' : 'Standby';
+            // OLD LOGIC: Moving average below threshold = Active (device responding quickly)
+            // NEW LOGIC (Dual Threshold): To be "Standby", RTT must be > threshold AND > standbyThreshold (default 5000ms)
+            // This prevents false positives on fast networks where "3x median" is still very fast (e.g. median 20ms -> 3x = 60ms).
+            const isSlow = movingAvg > threshold;
+            const isAbsolutelySlow = movingAvg > editableConfig.standbyThreshold;
+
+            rawState = (isSlow && isAbsolutelySlow) ? 'Standby' : 'Online';
         } else {
             // Not enough data points yet - still calibrating
             rawState = 'Calibrating...';

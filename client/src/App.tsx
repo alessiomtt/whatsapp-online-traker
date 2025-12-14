@@ -9,7 +9,7 @@ import { ArrowLeft, Lock, AlertCircle, Shield, Trash2, LogOut, Eye, EyeOff, Sett
 
 export const socket: Socket = io('http://localhost:3001');
 
-// SHA-256 hash of "Alessio14"
+// SHA-256 hash
 const ADMIN_PASSWORD_HASH = '8a9bcf9d8e7f6c5b4a3e2d1c0f9e8d7c6b5a4e3d2c1b0a9f8e7d6c5b4a3e2d1c';
 
 // Simple SHA-256 hash function for browser
@@ -21,7 +21,7 @@ async function hashPassword(password: string): Promise<string> {
     return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-// Pre-computed hash of "Alessio14"
+// Pre-computed hash
 const CORRECT_HASH = 'e4d909c290d0fb1ca068ffaddf22cbd0d0c80f6c8f3f4f2d1a1b1c1d1e1f2a2b';
 
 function App() {
@@ -173,6 +173,9 @@ function App() {
         warmupProbeCount: number;
         outlierFilterEnabled: boolean;
         defaultProbeMethod: 'reaction' | 'delete';
+        stateConfirmationEnabled: boolean;
+        stateConfirmationCount: number;
+        standbyThreshold: number;
     }
 
     const [configData, setConfigData] = useState<{
@@ -188,7 +191,10 @@ function App() {
         warmupEnabled: false,
         warmupProbeCount: 10,
         outlierFilterEnabled: false,
-        defaultProbeMethod: 'delete'
+        defaultProbeMethod: 'delete',
+        stateConfirmationEnabled: true,
+        stateConfirmationCount: 3,
+        standbyThreshold: 1000
     });
     // String versions for text input (prevents focus loss on each keystroke)
     const [configFormStrings, setConfigFormStrings] = useState({
@@ -196,7 +202,9 @@ function App() {
         offlineThreshold: '10000',
         thresholdMultiplier: '0.9',
         calibrationProbeCount: '5',
-        warmupProbeCount: '10'
+        warmupProbeCount: '10',
+        stateConfirmationCount: '3',
+        standbyThreshold: '1000'
     });
     const [configLoading, setConfigLoading] = useState(false);
     const [configSaving, setConfigSaving] = useState(false);
@@ -216,7 +224,9 @@ function App() {
                     offlineThreshold: String(data.current.offlineThreshold),
                     thresholdMultiplier: String(data.current.thresholdMultiplier),
                     calibrationProbeCount: String(data.current.calibrationProbeCount),
-                    warmupProbeCount: String(data.current.warmupProbeCount)
+                    warmupProbeCount: String(data.current.warmupProbeCount),
+                    stateConfirmationCount: String(data.current.stateConfirmationCount),
+                    standbyThreshold: String(data.current.standbyThreshold)
                 });
                 setConfigLoading(false);
             };
@@ -267,10 +277,22 @@ function App() {
             warmupEnabled: configForm.warmupEnabled,
             warmupProbeCount: parseInt(configFormStrings.warmupProbeCount) || 10,
             outlierFilterEnabled: configForm.outlierFilterEnabled,
-            defaultProbeMethod: configForm.defaultProbeMethod
+            defaultProbeMethod: configForm.defaultProbeMethod,
+            stateConfirmationEnabled: configForm.stateConfirmationEnabled,
+            stateConfirmationCount: parseInt(configFormStrings.stateConfirmationCount) || 3,
+            standbyThreshold: parseInt(configFormStrings.standbyThreshold) || 1000
         };
         socket.emit('admin-save-config', configToSave);
     };
+
+    // ... (in JSX) ...
+
+    <p className="text-xs text-gray-500">
+        Valore minimo assoluto RTT per considerare un dispositivo in "Standby", indipendentemente dalla mediana.
+        Previene falsi positivi su reti veloci.
+        <br />
+        <span className="font-medium">Consigliato: 1000-5000 ms</span> | Default: 1000
+    </p>
 
     const handleResetConfig = () => {
         setConfigSaving(true);
@@ -547,6 +569,67 @@ function App() {
                                         <div className="w-11 h-6 bg-gray-300 peer-focus:ring-2 peer-focus:ring-blue-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
                                     </label>
                                 </div>
+                            </div>
+
+                            {/* Hysteresis Settings Section */}
+                            <div className="border-t border-gray-200 pt-4 mt-4">
+                                <h4 className="text-sm font-semibold text-gray-800 mb-3">Impostazioni Isteresi (Anti-Flicker)</h4>
+
+                                {/* Standby Threshold (Absolute Floor) */}
+                                <div className="space-y-2 mb-4">
+                                    <label className="block">
+                                        <span className="text-sm font-medium text-gray-700">Soglia Assoluta Standby (ms)</span>
+                                        <input
+                                            type="text"
+                                            value={configFormStrings.standbyThreshold}
+                                            onChange={(e) => setConfigFormStrings({ ...configFormStrings, standbyThreshold: e.target.value })}
+                                            className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                        />
+                                    </label>
+                                    <p className="text-xs text-gray-500">
+                                        Valore minimo assoluto RTT per considerare un dispositivo in "Standby", indipendentemente dalla mediana.
+                                        Previene falsi positivi su reti veloci.
+                                        <br />
+                                        <span className="font-medium">Consigliato: 1000-5000 ms</span> | Default: 1000
+                                    </p>
+                                </div>
+
+                                {/* State Confirmation Toggle */}
+                                <div className="flex items-center justify-between mb-4 p-3 bg-gray-50 rounded-lg">
+                                    <div>
+                                        <span className="text-sm font-medium text-gray-700">Conferma Stato (Anti-Flicker)</span>
+                                        <p className="text-xs text-gray-500 mt-1">
+                                            Richiede N conferme consecutive prima di cambiare stato (Online/Standby).
+                                        </p>
+                                    </div>
+                                    <label className="relative inline-flex items-center cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={configForm.stateConfirmationEnabled}
+                                            onChange={(e) => setConfigForm({ ...configForm, stateConfirmationEnabled: e.target.checked })}
+                                            className="sr-only peer"
+                                        />
+                                        <div className="w-11 h-6 bg-gray-300 peer-focus:ring-2 peer-focus:ring-blue-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                                    </label>
+                                </div>
+
+                                {/* State Confirmation Count - only show if enabled */}
+                                {configForm.stateConfirmationEnabled && (
+                                    <div className="space-y-2 mb-4 ml-4">
+                                        <label className="block">
+                                            <span className="text-sm font-medium text-gray-700">Numero Conferme</span>
+                                            <input
+                                                type="text"
+                                                value={configFormStrings.stateConfirmationCount}
+                                                onChange={(e) => setConfigFormStrings({ ...configFormStrings, stateConfirmationCount: e.target.value })}
+                                                className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                            />
+                                        </label>
+                                        <p className="text-xs text-gray-500">
+                                            <span className="font-medium">Consigliato: 3-5</span> | Default: 3
+                                        </p>
+                                    </div>
+                                )}
                             </div>
 
                             {/* Probe Method Settings Section */}

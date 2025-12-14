@@ -46,6 +46,8 @@ export interface EditableConfig {
     // State confirmation (anti-flickering)
     stateConfirmationEnabled: boolean;  // Require consecutive confirmations before state change
     stateConfirmationCount: number;     // Number of consecutive same-state calculations required (default 3)
+    // Hysteresis settings
+    standbyThreshold: number;           // Minimum absolute RTT (ms) to consider valid Standby (prevents false positives on fast networks)
 }
 
 // Path to custom config file
@@ -90,7 +92,8 @@ export function getDefaultEditableConfig(): EditableConfig {
         outlierFilterEnabled: false,
         defaultProbeMethod: 'delete',  // Default to silent delete method
         stateConfirmationEnabled: true,  // Anti-flickering enabled by default
-        stateConfirmationCount: 3        // Require 3 consecutive same-state calculations
+        stateConfirmationCount: 3,       // Require 3 consecutive same-state calculations
+        standbyThreshold: 1000           // Default 1 second absolute floor (was 5000, too high)
     };
 }
 
@@ -171,7 +174,8 @@ export function getCurrentEditableConfig(): EditableConfig {
             outlierFilterEnabled: custom.outlierFilterEnabled ?? defaults.outlierFilterEnabled,
             defaultProbeMethod: custom.defaultProbeMethod ?? defaults.defaultProbeMethod,
             stateConfirmationEnabled: custom.stateConfirmationEnabled ?? defaults.stateConfirmationEnabled,
-            stateConfirmationCount: custom.stateConfirmationCount ?? defaults.stateConfirmationCount
+            stateConfirmationCount: custom.stateConfirmationCount ?? defaults.stateConfirmationCount,
+            standbyThreshold: custom.standbyThreshold ?? defaults.standbyThreshold
         };
     }
 
