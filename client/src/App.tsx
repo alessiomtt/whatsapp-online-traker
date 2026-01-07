@@ -11,19 +11,7 @@ import { EditableConfig } from './types';
 export const socket: Socket = io('http://localhost:3001');
 
 // SHA-256 hash
-const ADMIN_PASSWORD_HASH = '8a9bcf9d8e7f6c5b4a3e2d1c0f9e8d7c6b5a4e3d2c1b0a9f8e7d6c5b4a3e2d1c';
 
-// Simple SHA-256 hash function for browser
-async function hashPassword(password: string): Promise<string> {
-    const encoder = new TextEncoder();
-    const data = encoder.encode(password);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-}
-
-// Pre-computed hash
-const CORRECT_HASH = 'e4d909c290d0fb1ca068ffaddf22cbd0d0c80f6c8f3f4f2d1a1b1c1d1e1f2a2b';
 
 function App() {
     const [isConnected, setIsConnected] = useState(socket.connected);
@@ -33,10 +21,7 @@ function App() {
     const [showAdminPanel, setShowAdminPanel] = useState(false);
     const [showComparePage, setShowComparePage] = useState(false);
     const [privacyMode, setPrivacyMode] = useState(false);
-    const [showPasswordDialog, setShowPasswordDialog] = useState(false);
-    const [passwordInput, setPasswordInput] = useState('');
-    const [passwordError, setPasswordError] = useState(false);
-    const [isCheckingPassword, setIsCheckingPassword] = useState(false);
+
 
     useEffect(() => {
         function onConnect() {
@@ -63,41 +48,9 @@ function App() {
         };
     }, []);
 
-    // Handle double click on logo
-    const handleLogoDoubleClick = () => {
-        setShowPasswordDialog(true);
-        setPasswordInput('');
-        setPasswordError(false);
-    };
-
-    // Handle password submission
-    const handlePasswordSubmit = async () => {
-        setIsCheckingPassword(true);
-        setPasswordError(false);
-
-        try {
-            const inputHash = await hashPassword(passwordInput);
-            // Check against hardcoded hash (computed from "Alessio14")
-            const correctHash = await hashPassword('Alessio14');
-
-            if (inputHash === correctHash) {
-                setShowPasswordDialog(false);
-                setShowAdminPanel(true);
-                setPasswordInput('');
-            } else {
-                setPasswordError(true);
-                setPasswordInput('');
-            }
-        } catch (err) {
-            setPasswordError(true);
-        } finally {
-            setIsCheckingPassword(false);
-        }
-    };
-
-    // Handle back from admin panel
-    const handleBackFromAdmin = () => {
-        setShowAdminPanel(false);
+    // Handle admin panel toggle
+    const handleToggleAdminPanel = () => {
+        setShowAdminPanel(!showAdminPanel);
     };
 
     // Admin: Clear database
@@ -298,7 +251,7 @@ function App() {
                         <h2 className="text-2xl font-bold text-white">Pannello Amministratore</h2>
                     </div>
                     <button
-                        onClick={handleBackFromAdmin}
+                        onClick={handleToggleAdminPanel}
                         className="px-4 py-2 bg-white/20 hover:bg-white/30 text-white rounded-lg flex items-center gap-2 font-medium transition-colors backdrop-blur-sm"
                     >
                         <ArrowLeft size={18} />
@@ -850,9 +803,7 @@ function App() {
                             <img
                                 src="/logo.png"
                                 alt="Stealth WP Traker Logo"
-                                className="w-10 h-10 object-contain cursor-pointer select-none"
-                                onDoubleClick={handleLogoDoubleClick}
-                                title=""
+                                className="w-10 h-10 object-contain select-none"
                             />
                             <h1 className="text-3xl font-bold text-gray-900">Stealth WP Traker</h1>
                         </div>
@@ -887,6 +838,15 @@ function App() {
                                                     </>
                                                 )}
                                             </button>
+                                            <div className="w-px h-4 bg-gray-300 mx-2" />
+                                            <button
+                                                onClick={handleToggleAdminPanel}
+                                                className="px-3 py-1.5 rounded-lg flex items-center gap-2 font-medium text-xs transition-all duration-200 border bg-white text-blue-600 border-blue-200 hover:bg-blue-50"
+                                                title="Apri pannello impostazioni"
+                                            >
+                                                <Settings size={16} />
+                                                <span>Impostazioni</span>
+                                            </button>
                                         </>
                                     )}
                                 </>
@@ -907,72 +867,13 @@ function App() {
                     </main>
 
                     <footer className="mt-12 text-center text-gray-500 text-sm">
-                        <a href="https://matteialessio.it" target="_blank" rel="noopener noreferrer" className="font-bold hover:text-gray-700 transition-colors">Alessio Mattei</a>
+                        Alessio Mattei - <a href="https://matteialessio.it" target="_blank" rel="noopener noreferrer" className="font-bold hover:text-gray-700 transition-colors">matteialessio.it</a>
                         {' '} - Credits: <a href="https://github.com/gommzystudio/device-activity-tracker" target="_blank" rel="noopener noreferrer" className="font-bold hover:text-gray-700 transition-colors">Gommzystudio</a>
                     </footer>
                 </div>
             </div>
 
-            {/* Password Dialog */}
-            {showPasswordDialog && (
-                <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm">
-                    <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full mx-4 p-6 animate-in fade-in zoom-in-95">
-                        <div className="w-16 h-16 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center mx-auto mb-4 shadow-lg">
-                            <Lock size={28} className="text-white" />
-                        </div>
 
-                        <h3 className="text-xl font-bold text-gray-900 text-center mb-2">
-                            Accesso Riservato
-                        </h3>
-                        <p className="text-gray-500 text-center text-sm mb-6">
-                            Inserisci la password per accedere al pannello di amministrazione
-                        </p>
-
-                        {passwordError && (
-                            <div className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4">
-                                <AlertCircle size={18} />
-                                <span className="text-sm font-medium">Password errata. Riprova.</span>
-                            </div>
-                        )}
-
-                        <input
-                            type="password"
-                            placeholder="Password"
-                            value={passwordInput}
-                            onChange={(e) => {
-                                setPasswordInput(e.target.value);
-                                setPasswordError(false);
-                            }}
-                            onKeyPress={(e) => e.key === 'Enter' && handlePasswordSubmit()}
-                            className={`w-full px-4 py-3 border rounded-lg mb-4 outline-none transition-all ${passwordError
-                                ? 'border-red-300 focus:ring-2 focus:ring-red-500 focus:border-red-500'
-                                : 'border-gray-300 focus:ring-2 focus:ring-purple-500 focus:border-purple-500'
-                                }`}
-                            autoFocus
-                        />
-
-                        <div className="flex gap-3">
-                            <button
-                                onClick={() => {
-                                    setShowPasswordDialog(false);
-                                    setPasswordInput('');
-                                    setPasswordError(false);
-                                }}
-                                className="flex-1 px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition-colors"
-                            >
-                                Annulla
-                            </button>
-                            <button
-                                onClick={handlePasswordSubmit}
-                                disabled={isCheckingPassword || !passwordInput}
-                                className="flex-1 px-4 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-lg font-medium hover:from-purple-700 hover:to-indigo-700 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                                {isCheckingPassword ? 'Verifica...' : 'Accedi'}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
         </ErrorBoundary>
     );
 }
