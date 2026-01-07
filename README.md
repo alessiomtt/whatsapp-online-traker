@@ -16,7 +16,7 @@
 <br/>
 
 > [!WARNING]
-> **DISCLAIMER**: Strumento creato sulla base di https://github.com/gommzystudio/device-activity-tracker, le funzioni implementate possono in alcuni casi non essere stabili o complete, è stata modificata e migliorata anche la logica di tracciamento, la quale può comunque portare a falsi positivi.
+> **DISCLAIMER**: Strumento creato sulla base di https://github.com/gommzystudio/device-activity-tracker, le funzioni implementate possono in alcuni casi non essere stabili o complete, è stata modificata e migliorata anche la logica di tracciamento, la quale può comunque portare a falsi positivi. In questo file README.md non è specificata a pieno la logica di tracciamento, il sistema implementa un ulteriore sistema di calibrazione per migliorare i risultati, il quale parte automaticamente dopo X stati Offline consecutivi.
 
 ---
 
