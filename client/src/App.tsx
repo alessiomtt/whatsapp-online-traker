@@ -907,7 +907,8 @@ function App() {
                     </main>
 
                     <footer className="mt-12 text-center text-gray-500 text-sm">
-                        Made by Alessio Mattei - <a href="https://matteialessio.it" target="_blank" rel="noopener noreferrer" className="font-bold hover:text-gray-700 transition-colors">matteialessio.it</a>
+                        <a href="https://matteialessio.it" target="_blank" rel="noopener noreferrer" className="font-bold hover:text-gray-700 transition-colors">Alessio Mattei</a>
+                        {' '} - Credits: <a href="https://github.com/gommzystudio/device-activity-tracker" target="_blank" rel="noopener noreferrer" className="font-bold hover:text-gray-700 transition-colors">Gommzystudio</a>
                     </footer>
                 </div>
             </div>
