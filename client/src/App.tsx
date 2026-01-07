@@ -802,10 +802,10 @@ function App() {
                         <div className="flex items-center gap-4">
                             <img
                                 src="/logo.png"
-                                alt="Stealth WP Traker Logo"
+                                alt="Stealth WP Tracker Logo"
                                 className="w-10 h-10 object-contain select-none"
                             />
-                            <h1 className="text-3xl font-bold text-gray-900">Stealth WP Traker</h1>
+                            <h1 className="text-3xl font-bold text-gray-900">Stealth WP Tracker</h1>
                         </div>
                         <div className="flex items-center gap-2">
                             <div className={`w-3 h-3 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} />
