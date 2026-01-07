@@ -1,5 +1,5 @@
 <h1 align="center">👻 Stealth WP Tracker</h1>
-<p align="center"><strong>Monitoraggio Attività WhatsApp tramite Analisi RTT</strong></p>
+<p align="center"><strong>Monitoraggio Attività WhatsApp tramite Analisi RTT (Crediti https://github.com/gommzystudio/device-activity-tracker)</strong></p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/Node.js-20+-339933?style=for-the-badge&logo=node.js&logoColor=white" alt="Node.js"/>
