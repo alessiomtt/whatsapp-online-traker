@@ -16,7 +16,7 @@
 <br/>
 
 > [!WARNING]
-> **DISCLAIMER**: Strumento per ricerca accademica e sicurezza. L'utilizzo senza consenso può violare leggi sulla privacy. Verificare le normative locali prima dell'uso.
+> **DISCLAIMER**: Strumento creato sulla base di https://github.com/gommzystudio/device-activity-tracker, le funzioni implementate possono in alcuni casi non essere stabili o complete, è stata modificata e migliorata anche la logica di tracciamento, la quale può comunque portare a falsi positivi.
 
 ---
 
