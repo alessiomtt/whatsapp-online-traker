@@ -22,6 +22,42 @@
 
 <br/>
 
+# 📸 Screenshots
+
+## Dashboard Principale
+![Dashboard](images/dashboard.jpg)
+*Vista della dashboard principale con lista contatti monitorati in tempo reale*
+
+## Confronto Timeline
+![Confronto Stati Online/Offline](images/confronto-stati-online-offline.jpg)
+*Pagina di confronto timeline tra più contatti per analisi correlate*
+
+## Pannello Impostazioni
+
+### Database e Connessione
+![Impostazioni - Gestione Database](images/impostazioni1.jpg)
+*Gestione database e connessione WhatsApp*
+
+### Configurazione Parametri RTT
+![Impostazioni - Parametri](images/impostazioni2.jpg)
+*Configurazione avanzata parametri di tracking e calibrazione*
+
+### Metodi Probe e Isteresi
+![Impostazioni - Probe Method](images/impostazioni3.jpg)
+*Configurazione metodi probe e impostazioni anti-flicker*
+
+## Database Utilities
+![Database Utilities](images/utilities.jpg)
+*Strumenti per export/import dati e gestione backup*
+
+## Archivio Sessioni
+![Archivio](images/archivio.jpg)
+*Visualizzazione sessioni archiviate con storico completo*
+
+---
+
+<br/>
+
 # 📋 PARTE 1: EXECUTIVE SUMMARY
 
 <br/>
